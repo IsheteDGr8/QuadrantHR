@@ -1,9 +1,5 @@
-# QuadrantHR — local orchestration for the 7 in-scope HR modules.
-# API containers only in Phase 0; frontends still run via Vite/Next locally.
-#
-# Usage:
-#   docker compose up --build -d
-#   docker compose ps
+# Unified modular monolith local stack (plan.md Week 1).
+# Legacy per-hackathon services: docker-compose.legacy.yml
 
 name: quadranthr
 
@@ -11,110 +7,75 @@ networks:
   quadranthr-net:
     driver: bridge
 
-services:
-  employee-directory:
-    build:
-      context: ./EmployeeDirectory
-      dockerfile: Dockerfile
-    container_name: quadranthr-employee-directory
-    ports:
-      - "8101:8000"
-    environment:
-      ALLOW_DEV_AUTH: "1"
-      AUTH_MODE: dev
-      DATABASE_URL: sqlite:///directory.db
-    networks:
-      - quadranthr-net
-    restart: unless-stopped
-
-  resume-screening:
-    build:
-      context: ./ResumeScreening
-      dockerfile: Dockerfile
-    container_name: quadranthr-resume-screening
-    ports:
-      - "8102:8000"
-    environment:
-      USE_MOCK_AZURE: "true"
-    networks:
-      - quadranthr-net
-    restart: unless-stopped
-
-  ticket-genie:
-    build:
-      context: ./Ticket-Genie
-      dockerfile: Dockerfile
-      target: backend
-    container_name: quadranthr-ticket-genie
-    ports:
-      - "8103:8000"
-    environment:
-      PORT: "8000"
-      DATABASE_URL: sqlite:////data/ticketgenie.db
-      USE_MOCK_AI: "true"
-    volumes:
-      - ticketgenie-data:/data
-    networks:
-      - quadranthr-net
-    restart: unless-stopped
-
-  training-portal:
-    build:
-      context: ./TrainingPortal
-      dockerfile: Dockerfile
-    container_name: quadranthr-training-portal
-    ports:
-      - "8104:8000"
-    environment:
-      PORT: "8000"
-      QUIZGEN_PROVIDER: mock
-      PYTHONPATH: /app/src
-    networks:
-      - quadranthr-net
-    restart: unless-stopped
-
-  hr-copilot:
-    build:
-      context: ./ClosedAI
-      dockerfile: Dockerfile
-    container_name: quadranthr-hr-copilot
-    ports:
-      - "8105:8001"
-    environment:
-      PYTHONUTF8: "1"
-      PYTHONIOENCODING: utf-8
-      SESSION_API_KEY: ${SESSION_API_KEY:-}
-      LLM_PROVIDER: ${LLM_PROVIDER:-}
-    networks:
-      - quadranthr-net
-    restart: unless-stopped
-
-  policy-generator:
-    build:
-      context: "./Bug Busters"
-      dockerfile: Dockerfile
-    container_name: quadranthr-policy-generator
-    ports:
-      - "8106:8000"
-    networks:
-      - quadranthr-net
-    restart: unless-stopped
-
-  employee-faq:
-    build:
-      context: ./Decacore-Employee-FAQ-Chatbot
-      dockerfile: Dockerfile
-    container_name: quadranthr-employee-faq
-    ports:
-      - "8107:8000"
-    environment:
-      PORT: "8000"
-    volumes:
-      - faq-storage:/app/data/storage
-    networks:
-      - quadranthr-net
-    restart: unless-stopped
-
 volumes:
-  ticketgenie-data:
-  faq-storage:
+  pgdata:
+  azurite-data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: quadranthr-postgres
+    environment:
+      POSTGRES_USER: quadranthr
+      POSTGRES_PASSWORD: quadranthr
+      POSTGRES_DB: quadranthr
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - quadranthr-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quadranthr -d quadranthr"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: quadranthr-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - quadranthr-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: quadranthr-azurite
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes:
+      - azurite-data:/data
+    networks:
+      - quadranthr-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: quadranthr-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://quadranthr:quadranthr@postgres:5432/quadranthr
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: dev-only-change-me
+      LLM_PROVIDER: mock
+      CORS_ORIGINS: http://localhost:5170,http://127.0.0.1:5170
+      AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+    ports:
+      - "8080:8080"
+    networks:
+      - quadranthr-net
+    restart: unless-stopped

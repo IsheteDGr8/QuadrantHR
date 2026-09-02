@@ -42,7 +42,7 @@ export function AppShell() {
             <>
               <p className="shell__user">{identity.name}</p>
               <p className="shell__meta">
-                {identity.role} · directory session
+                {identity.role} · {identity.email}
               </p>
               <button type="button" className="shell__signout" onClick={signOut}>
                 Sign out

@@ -2,6 +2,8 @@ export type Identity = {
   id: string;
   role: string;
   name: string;
+  email: string;
+  accessToken: string;
 };
 
 const STORAGE_KEY = "quadranthr.session";
@@ -11,7 +13,7 @@ export function loadIdentity(): Identity | null {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Identity;
-    if (!parsed?.id || !parsed?.role || !parsed?.name) return null;
+    if (!parsed?.accessToken || !parsed?.email || !parsed?.name) return null;
     return parsed;
   } catch {
     return null;

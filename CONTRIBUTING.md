@@ -10,4 +10,7 @@
 #   quadrant-legacy   → old stub (do not use for day-to-day work)
 #
 # Never re-add a .git folder inside a module directory. Prefer new work under
-# portal/ and gateway/ rather than editing team apps when possible.
+# portal/ and backend/ rather than editing hackathon reference apps when possible.
+#
+# Architecture source of truth: plan.md (unified modular monolith).
+# Hackathon folders are reference harvest targets only.

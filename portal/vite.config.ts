@@ -1,17 +1,20 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Portal UI on :5170. Directory API defaults to docker-mapped Mel on :8101.
+// Portal → unified modular monolith (plan.md) on :8080
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5170,
     strictPort: true,
     proxy: {
-      "/api/directory": {
-        target: process.env.VITE_DIRECTORY_PROXY_TARGET ?? "http://127.0.0.1:8101",
+      "/api": {
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8080",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/directory/, ""),
+      },
+      "/health": {
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8080",
+        changeOrigin: true,
       },
     },
   },

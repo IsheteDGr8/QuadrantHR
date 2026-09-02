@@ -11,8 +11,8 @@ export function HomePage() {
         <p className="page__eyebrow">QuadrantHR</p>
         <h1 className="page__title">One portal for people operations</h1>
         <p className="page__lede">
-          Seven hackathon modules, one shell. Directory is wired first; the rest
-          plug in against the dockerized services on ports 8101–8107.
+          Seven domains, one FastAPI modular monolith (see plan.md). Directory is
+          wired to the unified backend; other modules land in Weeks 2–3.
         </p>
       </header>
 

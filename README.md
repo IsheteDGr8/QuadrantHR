@@ -1,36 +1,48 @@
 # QuadrantHR
 
-Unified HR Automation & Intelligence Portal monorepo.
+Unified modular monolith for the HR portal — see [plan.md](plan.md).
 
-Of the original 11 hackathon concepts, 9 were built. Two of those nine are out of
-scope for this portal, leaving **7 modules** — all present in this repo.
+Hackathon folders (`EmployeeDirectory/`, `Ticket-Genie/`, etc.) are **reference
+codebases only**. Runtime code lives in `backend/` + `portal/`.
 
-## In-scope modules (7)
+## Architecture (Week 1+)
 
-| Module | Folder | Host port |
-|--------|--------|-----------|
-| Employee Directory | `EmployeeDirectory/` | **8101** |
-| Resume Screening | `ResumeScreening/` | **8102** |
-| Intelligent Helpdesk (+ leave / onboarding flows) | `Ticket-Genie/` | **8103** |
-| Training & Compliance | `TrainingPortal/` | **8104** |
-| AI HR Copilot | `ClosedAI/` | **8105** |
-| AI Policy Generator | `Bug Busters/` | **8106** |
-| Employee FAQ Chatbot | `Decacore-Employee-FAQ-Chatbot/` | **8107** |
-
-Out of product scope: Career Advisor, HR Analytics Dashboard (and any other of the nine you intentionally skip as standalone apps).
+| Layer | Local | Production target |
+|-------|--------|-------------------|
+| API | FastAPI modular monolith `:8080` | Azure Container Apps |
+| Relational | PostgreSQL `:5432` | Azure SQL |
+| Blobs | Azurite `:10000` | Azure Blob Storage |
+| Jobs/cache | Redis `:6379` | Azure Cache / workers |
+| Vectors / chat | schema in `infra/cosmos-schema.md` | Azure Cosmos DB |
+| UI | React/Vite `portal/` `:5170` | Static Web App / CDN |
 
 ## Quick start
 
 ```bash
-cp .env.example .env
+# Data plane + unified backend
 docker compose up --build -d
-cd portal && npm install && npm run dev   # http://localhost:5170
+
+# UI
+cd portal && npm install && npm run dev
 ```
 
-All API containers join `quadranthr-net` so a future gateway / MCP layer can reach them by service name.
+- API docs: http://127.0.0.1:8080/docs  
+- Portal: http://localhost:5170  
+- Seed login: `hr.admin@quadranthr.local` / `changeme123`
 
-The **portal** shell (`portal/`) is the unified UI. Directory is live first; other modules are stubs until wired. Team app folders are vendored snapshots — see [CONTRIBUTING.md](CONTRIBUTING.md) (push only to QuadrantHR, never to other teams’ remotes).
+Legacy microservice compose (optional): `docker compose -f docker-compose.legacy.yml up`
 
-## Architecture direction
+## Modules (`backend/app/modules/`)
 
-Keep each backend intact → FastAPI gateway + MCP tools → one React portal shell that absorbs modules domain-by-domain (strangler fig).
+| Module | Status |
+|--------|--------|
+| auth | JWT local (Entra in Week 4) |
+| directory | Employee search CRUD scaffold |
+| ticketing | Tickets + leave→ticket link |
+| ai_agent | Mock LLM copilot |
+| hiring / training / policies | Status stubs for Weeks 2–3 |
+
+## Git safety
+
+Push **only** to https://github.com/IsheteDGr8/QuadrantHR. Never re-add `.git`
+inside hackathon folders. See [CONTRIBUTING.md](CONTRIBUTING.md).
