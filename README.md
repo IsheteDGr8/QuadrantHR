@@ -24,9 +24,12 @@ Out of product scope: Career Advisor, HR Analytics Dashboard (and any other of t
 ```bash
 cp .env.example .env
 docker compose up --build -d
+cd portal && npm install && npm run dev   # http://localhost:5170
 ```
 
-All API containers join `quadranthr-net` so a future gateway / MCP layer can reach them by service name. Frontends still run via each project’s Vite/Next/Svelte app locally.
+All API containers join `quadranthr-net` so a future gateway / MCP layer can reach them by service name.
+
+The **portal** shell (`portal/`) is the unified UI. Directory is live first; other modules are stubs until wired. Team app folders are vendored snapshots — see [CONTRIBUTING.md](CONTRIBUTING.md) (push only to QuadrantHR, never to other teams’ remotes).
 
 ## Architecture direction
 

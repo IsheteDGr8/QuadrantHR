@@ -25,6 +25,8 @@
 **/.next/
 **/build/
 **/.turbo/
+portal/node_modules/
+portal/dist/
 
 # --- IDE / OS ---
 .idea/

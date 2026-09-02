@@ -1,0 +1,137 @@
+.shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.shell__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem 1.1rem;
+  background: linear-gradient(180deg, var(--brand) 0%, var(--brand-deep) 100%);
+  color: #e8f2f0;
+}
+
+.shell__brand {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.35rem 0.5rem 1rem;
+  border-bottom: 1px solid rgba(232, 242, 240, 0.12);
+}
+
+.shell__mark {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.55rem;
+  background: rgba(232, 242, 240, 0.12);
+  font-family: var(--font-display);
+  font-weight: 650;
+  font-size: 1.25rem;
+}
+
+.shell__product {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.shell__tag {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  opacity: 0.72;
+}
+
+.shell__links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.shell__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.55rem;
+  color: rgba(232, 242, 240, 0.82);
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.shell__link:hover {
+  background: rgba(232, 242, 240, 0.08);
+  color: #fff;
+}
+
+.shell__link--active {
+  background: rgba(232, 242, 240, 0.14);
+  color: #fff;
+}
+
+.shell__badge {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+}
+
+.shell__footer {
+  padding: 0.75rem;
+  border-top: 1px solid rgba(232, 242, 240, 0.12);
+}
+
+.shell__user {
+  margin: 0;
+  font-weight: 600;
+}
+
+.shell__meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  opacity: 0.7;
+}
+
+.shell__signout {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(232, 242, 240, 0.28);
+  background: transparent;
+  color: #e8f2f0;
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+}
+
+.shell__signout:hover {
+  background: rgba(232, 242, 240, 0.1);
+}
+
+.shell__main {
+  padding: 2rem 2.25rem 3rem;
+}
+
+@media (max-width: 860px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .shell__nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .shell__links {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .shell__footer {
+    display: none;
+  }
+}
