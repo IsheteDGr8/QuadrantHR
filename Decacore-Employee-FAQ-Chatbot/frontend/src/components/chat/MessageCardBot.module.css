@@ -1,0 +1,356 @@
+.botRow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.botCol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 92%;
+  min-width: 0;
+}
+.card {
+  max-width: 100%;
+  min-width: 520px;
+  background: var(--accent);
+  color: #fff;
+  padding: 16px 18px;
+  border-radius: 4px 14px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  box-sizing: border-box;
+  animation: msgIn 0.32s ease both;
+}
+@media (max-width: 620px) {
+  .card {
+    min-width: 0;
+  }
+}
+.card.warn {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--warn);
+}
+.card.refuse {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-hairline);
+}
+.kicker {
+  font-family: var(--font-heading);
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  /* The answer is plain text, not markdown. Without this the model's line breaks
+     collapse and a bulleted list arrives as one unreadable run-on paragraph. */
+  white-space: pre-wrap;
+}
+.noMatch {
+  opacity: 0.7;
+  font-size: 12px;
+  margin: 0;
+}
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 2px 0 4px;
+}
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.stepDot {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(var(--overlay-rgb), 0.16);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.stepText {
+  flex: 1;
+  min-width: 0;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+.tag {
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--overlay-rgb), 0.16);
+  white-space: nowrap;
+  display: inline-block;
+  animation: tagIn 0.26s ease both;
+  transition: background var(--duration-fast) var(--ease);
+}
+@keyframes msgIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes tagIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.card.warn .tag {
+  background: rgba(242, 176, 77, 0.18);
+  color: var(--warn);
+}
+.card.refuse .tag {
+  background: rgba(var(--overlay-rgb), 0.08);
+  color: var(--text-dim);
+}
+.sourcesToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 11px;
+  color: rgba(var(--overlay-rgb), 0.72);
+  background: rgba(var(--overlay-rgb), 0.08);
+  border: 1px solid rgba(var(--overlay-rgb), 0.16);
+  border-radius: 999px;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+}
+.sourcesToggle:hover {
+  color: #fff;
+  background: rgba(var(--overlay-rgb), 0.14);
+}
+/* Warn and refuse cards are light with dark text, so the white-on-accent treatment
+   above would render the button invisible on them. */
+.card.warn .sourcesToggle,
+.card.refuse .sourcesToggle {
+  color: var(--text-dim);
+  background: rgba(var(--overlay-rgb), 0.06);
+  border-color: var(--border-hairline);
+}
+.card.warn .sourcesToggle:hover,
+.card.refuse .sourcesToggle:hover {
+  color: var(--text);
+  background: rgba(var(--overlay-rgb), 0.12);
+}
+.sourcesChevron {
+  transition: transform 0.15s ease;
+}
+.sourcesChevronOpen {
+  transform: rotate(180deg);
+}
+.linkChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 12px;
+  background: rgba(var(--overlay-rgb), 0.16);
+  color: #fff;
+  border: 1px solid rgba(var(--overlay-rgb), 0.22);
+  border-radius: 999px;
+  padding: 6px 12px;
+  text-decoration: none;
+  line-height: 1.2;
+  cursor: pointer;
+  width: fit-content;
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+.linkChip:hover {
+  background: rgba(var(--overlay-rgb), 0.26);
+  border-color: rgba(var(--overlay-rgb), 0.4);
+}
+.formChip {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 12.5px;
+  background: #fff;
+  color: #5b31d6;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
+  box-sizing: border-box;
+  width: fit-content;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+.formChip:hover {
+  background: #f1ecff;
+  color: #4a24bd;
+}
+.hrBtnRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.sendHrBtn {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 12.5px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: background var(--duration-fast) var(--ease);
+}
+.sendHrBtn:hover {
+  background: var(--accent-hover);
+}
+.msgActions {
+  display: flex;
+  gap: 2px;
+  padding-left: 2px;
+}
+.msgActionBtn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(var(--text-rgb), 0.35);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.msgActionBtn:hover {
+  background: var(--surface);
+  color: rgba(var(--text-rgb), 0.75);
+}
+.msgActionBtn.active {
+  color: var(--accent-text);
+}
+.followups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 2px;
+  margin-top: 4px;
+}
+.followupsLabel {
+  font-size: 11px;
+  color: var(--text-dimmer);
+  margin: 0;
+}
+.followupsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.followupChip {
+  font-size: 12px;
+  background: transparent;
+  color: var(--accent-text);
+  border: 1px solid rgba(124, 77, 255, 0.55);
+  border-radius: 100px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+.followupChip:hover {
+  background: rgba(124, 77, 255, 0.14);
+  border-color: rgba(124, 77, 255, 0.8);
+  color: var(--accent-text);
+}
+
+/* Blinking caret on the answer still being streamed. Inline so it sits on the last
+   line of text rather than below it, and animated with opacity steps so it reads as
+   a cursor rather than a fade. */
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  /* currentColor: white on the filled answer card, body text on warn/refuse cards. */
+  background: currentColor;
+  animation: caretBlink 1s steps(1, end) infinite;
+}
+@keyframes caretBlink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    animation: none;
+  }
+}
+
+/* A citation chip that opens its source PDF. Same shape as a plain tag so the row
+   reads as one set, with the affordance carried by the cursor, icon and hover. */
+.tag.tagLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.tag.tagLink:hover {
+  background: rgba(var(--overlay-rgb), 0.3);
+}
+.card.warn .tag.tagLink:hover {
+  background: rgba(242, 176, 77, 0.3);
+}
+.card.refuse .tag.tagLink:hover {
+  background: rgba(var(--overlay-rgb), 0.16);
+}
+.tagRef {
+  opacity: 0.7;
+}

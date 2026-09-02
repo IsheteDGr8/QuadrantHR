@@ -1,0 +1,48 @@
+.panel {
+  padding: 28px 40px;
+  max-width: 900px;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  animation: pageIn var(--duration-slow) var(--ease) both;
+}
+@keyframes pageIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    /* `none`, not `translateY(0)`. The animation is filled `both`, so whatever the
+       last keyframe says stays applied forever — and *any* transform other than
+       `none` makes this element the containing block for `position: fixed`
+       descendants. That is why the document modal centred itself inside this 1441px
+       page panel instead of the 677px viewport, landing below the fold. */
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}
+.title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 22px;
+  margin: 0;
+}
+.sub {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  margin: 8px 0 22px;
+}
+.sectionLabel {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 14px;
+  margin: 20px 0 10px;
+  color: var(--text);
+}

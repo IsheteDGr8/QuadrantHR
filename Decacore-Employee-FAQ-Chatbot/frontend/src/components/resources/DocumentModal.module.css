@@ -1,0 +1,225 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 20px;
+  box-sizing: border-box;
+  animation: backdropIn 0.18s ease both;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  padding: 0;
+  max-width: 960px;
+  width: 100%;
+  box-sizing: border-box;
+  height: 88vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: modalIn 0.22s ease both;
+}
+
+@keyframes backdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .card {
+    animation: none;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px 14px;
+}
+.subtitle {
+  display: block;
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 3px;
+}
+.headerTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 17px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.iconBtn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+.iconBtn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.favBtn.on {
+  color: var(--accent-text);
+}
+
+.versionTabs {
+  display: flex;
+  gap: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  padding: 4px;
+  width: fit-content;
+  margin: 0 24px 14px;
+}
+.versionTab {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 7px 13px;
+  border-radius: 8px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
+.versionTab:hover {
+  color: var(--text);
+}
+.versionTab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.changedStrip {
+  margin: 0 24px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(124, 77, 255, 0.12);
+  border: 1px solid rgba(124, 77, 255, 0.28);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--accent-text);
+}
+.changedDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-text);
+  flex: none;
+}
+
+/* The PDF fills this. --paper-bg deliberately stays light in both themes: a PDF page
+   is white, so a dark trough around it would frame it in a hard seam. */
+.viewer {
+  margin: 0 20px 20px;
+  background: var(--paper-bg);
+  border-radius: 10px;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.frame {
+  flex: 1;
+  border: none;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+/* Loading, failure, and the previous-version case all sit on the same light surface,
+   so they need the paper text colour rather than the theme's. */
+.notice {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 28px;
+  text-align: center;
+  color: var(--paper-text-muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.notice p {
+  margin: 0;
+  max-width: 46ch;
+}
+.loading {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading { animation: none; }
+}
+/* Lives on the light .paper background, so it cannot borrow the dark-theme button
+   colours — .versionTab's var(--text-dim) is near-white and was invisible here. */
+.openPdf {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 9px 15px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: background var(--duration-fast) var(--ease);
+}
+.openPdf:hover {
+  background: var(--accent-hover);
+}
+

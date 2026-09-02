@@ -1,34 +1,33 @@
 # QuadrantHR
 
-Unified HR Automation & Intelligence Portal monorepo. Legacy hackathon apps live side-by-side as services; a shared FastAPI gateway, MCP tool layer, and portal shell come next.
+Unified HR Automation & Intelligence Portal monorepo.
 
-## Services (Phase 0)
+Of the original 11 hackathon concepts, 9 were built. Two of those nine are out of
+scope for this portal, leaving **7 modules** — all present in this repo.
 
-| Module | Folder | Host port | Notes |
-|--------|--------|-----------|--------|
-| Employee Directory (Mel) | `EmployeeDirectory/` | **8101** | FastAPI |
-| Resume Screening (ResumeIQ) | `ResumeScreening/` | **8102** | FastAPI, mock Azure |
-| Helpdesk / Leave / Onboarding | `Ticket-Genie/` | **8103** | FastAPI |
-| Training & Compliance | `TrainingPortal/` | **8104** | Local `devserver.py` |
-| AI HR Copilot (Vera) | `ClosedAI/` | **8105** | Agent server |
-| AI Policy Generator | `Bug Busters/` | **8106** | Compose profile `full` |
+## In-scope modules (7)
 
-Incoming: a dedicated **Employee FAQ Chatbot** codebase (and any refined Policy Generator tree) will be added as additional services when available. Ticket-Genie’s RAG chatbot covers FAQ for now.
+| Module | Folder | Host port |
+|--------|--------|-----------|
+| Employee Directory | `EmployeeDirectory/` | **8101** |
+| Resume Screening | `ResumeScreening/` | **8102** |
+| Intelligent Helpdesk (+ leave / onboarding flows) | `Ticket-Genie/` | **8103** |
+| Training & Compliance | `TrainingPortal/` | **8104** |
+| AI HR Copilot | `ClosedAI/` | **8105** |
+| AI Policy Generator | `Bug Busters/` | **8106** |
+| Employee FAQ Chatbot | `Decacore-Employee-FAQ-Chatbot/` | **8107** |
 
-Excluded from product scope: Career Advisor, HR Analytics Dashboard.
+Out of product scope: Career Advisor, HR Analytics Dashboard (and any other of the nine you intentionally skip as standalone apps).
 
 ## Quick start
 
 ```bash
 cp .env.example .env
 docker compose up --build -d
-docker compose --profile full up --build -d   # also start policy-generator
 ```
 
-All API containers join the `quadranthr-net` Docker network so a future gateway can reach them by service name.
-
-Frontends are not in compose yet — run each project’s Vite/Next UI locally against the mapped ports above.
+All API containers join `quadranthr-net` so a future gateway / MCP layer can reach them by service name. Frontends still run via each project’s Vite/Next/Svelte app locally.
 
 ## Architecture direction
 
-Keep each backend intact → wrap with gateway + MCP → ship one React portal shell that absorbs modules domain-by-domain (strangler fig). Do not big-bang merge the five UIs.
+Keep each backend intact → FastAPI gateway + MCP tools → one React portal shell that absorbs modules domain-by-domain (strangler fig).

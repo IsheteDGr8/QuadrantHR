@@ -1,0 +1,422 @@
+from __future__ import annotations
+
+from collections import Counter
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+
+from sqlalchemy.orm import Session
+
+from ..config import settings
+from ..models import HRForm
+from .form_hints import suggest_form
+from .guardrails import (
+    UserProfile,
+    canned_reply,
+    mentions_self,
+    only_about_self,
+    profile_context,
+    profile_reply,
+)
+from .llm import llm_service
+from .search import relevance_score, search_service, tokens
+
+NO_MATCH = "I couldn't find this in the approved policy documents. I can help you send the question to HR."
+
+
+@dataclass
+class RagResult:
+    answer: str
+    citations: list[dict]
+    confidence: float
+    should_escalate: bool
+
+
+@dataclass
+class RagStream:
+    """Everything but the answer text, which is consumed from `chunks`.
+
+    Retrieval finishes before the model starts writing, so citations and confidence
+    are already known when the first token goes out. That lets the chat endpoint send
+    its `meta` frame immediately instead of holding the connection until the whole
+    answer exists.
+    """
+
+    citations: list[dict]
+    confidence: float
+    should_escalate: bool
+    chunks: Iterator[str] = field(default_factory=lambda: iter(()))
+    # The fillable form this answer points at, if a cited policy names one. Never a
+    # citation: forms are not part of the search corpus.
+    form: HRForm | None = None
+    # Raw backend score alongside the relevance figure in `confidence`. They differ on
+    # Azure, where the backend score is RRF and says nothing about relevance — logging
+    # both is what makes azure_min_score tunable from real traffic.
+    raw_score: float = 0.0
+    # True only when retrieval found nothing usable and the reply is NO_MATCH. Sent to
+    # the client rather than inferred there: "no citations and an escalation offer" is
+    # not the same thing, and inferring it turned a partial answer ("the documents do
+    # not include a company overview beyond the leadership team") into a card headed
+    # "No approved company policy matched this request".
+    no_policy_match: bool = False
+    # The question named the asker, so the answer may have come from the employee
+    # record rather than from any policy. The excerpt text travels with the citations
+    # so the caller can check, once the answer exists, whether the policies actually
+    # contributed — see verified_citations().
+    record_only: bool = False
+    # Every retrieved document, ranked or not, with the excerpt text that would be
+    # credited. Verification runs over this rather than over `citations`, because the
+    # document the answer used is not always one retrieval ranked highly.
+    candidates: list[dict] = field(default_factory=list)
+    # All chunks retrieved for each candidate document, not just the highest-ranked
+    # one. A document is credited on its best-matching excerpt: "I'm starting Monday"
+    # was answered from a New Hire Guide chunk that ranked below another chunk of the
+    # same guide, so scoring the document on its first chunk alone lost it entirely.
+    candidate_texts: list[list[str]] = field(default_factory=list)
+
+
+# A hit is only cited if it scores at least this fraction of the best hit's score.
+# Tuned against the real corpus, where the two failure modes pull in opposite
+# directions: 0.7 cut "can I carry over PTO and does parental leave affect accrual"
+# down to one source when it genuinely needs the PTO policy too, while 0.5 alone let
+# the whole tail through on "bereavement leave". 0.5 plus MAX_CITATIONS covers both —
+# the ratio drops the clearly-unrelated, the cap drops the merely-ranked.
+CITATION_SCORE_RATIO = 0.5
+
+# Hard ceiling. The ratio handles the usual case; this stops a question whose hits are
+# all equally mediocre from footnoting an answer with the entire corpus.
+MAX_CITATIONS = 3
+
+# The equivalent ratio for Azure's RRF scores, which sit in a much narrower band —
+# measured, an unrelated document still scores ~0.5 of the best, so 0.5 would keep
+# everything. At 0.8 the dental question cites one document and the PTO question drops
+# the unrelated retirement guide it used to carry.
+AZURE_CITATION_RATIO = 0.8
+
+
+def support_score(answer_tokens: Counter, text: str, weights: dict[str, float]) -> float:
+    """How much of the answer this excerpt accounts for, rare words counting most.
+
+    Plain word overlap does not work here: every policy in the corpus shares the same
+    furniture — "People Operations", "policy", "approval", "guidance" — so an excerpt
+    about travel to BluePeak sites scored 0.89 of the best against an answer about job
+    classification, purely on boilerplate. Weighting each shared word by how few of the
+    candidate excerpts contain it leaves the distinctive terms ("classification",
+    "timekeeping") deciding the match, which is what actually identifies the source.
+    """
+    # Words present in nearly every excerpt say nothing about which one was used.
+    # "Quadrant Technologies." shares only "technologies" with the staff directory —
+    # a word in all 31 documents — and that was enough to footnote a two-word answer
+    # about the asker with an unrelated document.
+    shared = {t for t in set(tokens(text)) & set(answer_tokens) if weights.get(t, 1.0) >= COMMON_WORD_WEIGHT}
+    # One word in common is a coincidence, not a source. "Quadrant Technologies." shares
+    # exactly "technologies" with half the corpus, and on a two-word answer that single
+    # word was 41% of it — enough to cite a document the answer never came from.
+    if len(shared) < MIN_SHARED_TERMS:
+        return 0.0
+    total = sum(weights.get(t, 1.0) for t in answer_tokens)
+    return sum(weights.get(t, 1.0) for t in shared) / total if total else 0.0
+
+
+def rarity_weights(texts: list[str]) -> dict[str, float]:
+    """1 for a word in one excerpt, approaching 0 for one in all of them."""
+    import math
+
+    n = max(len(texts), 1)
+    seen = Counter(t for text in texts for t in set(tokens(text)))
+    return {t: math.log(1 + n / df) / math.log(1 + n) for t, df in seen.items()}
+
+
+# How much of a cited excerpt has to survive in the answer for that citation to be
+# treated as evidence rather than as something retrieval merely happened to return.
+# Measured on the awkward cases: an answer genuinely taken from a policy scores 0.24
+# to 0.34 against it, while an answer taken from the employee record scores at most
+# 0.15 against whatever search returned alongside it.
+CITATION_SUPPORT_MIN = 0.20
+
+# Rarity below which a shared word is treated as furniture rather than evidence.
+# A word in every candidate excerpt scores about 0.39 on this scale.
+COMMON_WORD_WEIGHT = 0.5
+
+# Distinct meaningful words an excerpt and the answer must have in common at all.
+MIN_SHARED_TERMS = 2
+
+# How much of the answer a further citation has to explain that earlier ones did not.
+CITATION_MARGINAL_MIN = 0.12
+
+
+def verified_citations(answer: str, candidates: list[dict], texts: list[list[str]],
+                       fallback: list[dict], record_only: bool) -> list[dict]:
+    """The documents the answer actually drew on, best-supported first.
+
+    Retrieval order cannot decide this. Azure ranked the Employee Handbook last of five
+    for "what does the company entail", yet the answer — BluePeak Flow, Connect and
+    Insight, founded in Denver in 2018 — came entirely from it, and the three documents
+    ranked above it contributed nothing. Comparing each excerpt against the finished
+    answer picks the right one regardless of where it placed.
+
+    Falls back to the retrieval order when nothing clears the bar, so a heavily
+    paraphrased answer keeps its sources rather than losing them all.
+
+    Only consulted when the question named the asker and retrieval scored below the
+    floor, because that is where the two cases are indistinguishable beforehand:
+    "what do I do if my job title needs updating" was answered out of the Overtime and
+    Compensation Policy and deserves the citation, while "how long have I been working
+    here" is answered from the employee record and must not footnote whichever policy
+    search happened to return.
+
+    Comparing against the answer separates them — the first shares the policy's wording,
+    the second shares nothing with it. Citations are never emptied on the strength of
+    this check alone: a heavily paraphrased answer would score low against text it
+    genuinely used, and no citation at all is worse than an imperfect one.
+    """
+    flat = [chunk for group in texts for chunk in group]
+    weights = rarity_weights(flat)
+    answer_tokens = Counter(tokens(answer))
+    scored = [(max((support_score(answer_tokens, chunk, weights) for chunk in group), default=0.0), c)
+              for c, group in zip(candidates, texts, strict=False)]
+    kept = [c for score, c in sorted(scored, key=lambda pair: pair[0], reverse=True)
+            if score >= CITATION_SUPPORT_MIN]
+    # A second citation has to earn its place by explaining part of the answer the
+    # first one does not. Ranking alone kept "Remote Work Policy — Travel to BluePeak
+    # Sites" beside an answer about job classification: it scored 0.79 of the best on
+    # filler alone, while containing none of "classification", "timekeeping", "title"
+    # or "duties". Requiring new ground covers the genuine multi-source case too —
+    # "quit notice, equipment return and account shutoff" keeps three documents,
+    # because each one answers a different third of the question.
+    if kept:
+        chosen: list[dict] = []
+        covered: set[str] = set()
+        total = sum(weights.get(t, 1.0) for t in answer_tokens) or 1.0
+        by_doc = {id(c): group for c, group in zip(candidates, texts, strict=False)}
+        for c in kept:
+            group = by_doc.get(id(c), [])
+            best_chunk = max(group, key=lambda t: support_score(answer_tokens, t, weights), default="")
+            shared = set(tokens(best_chunk)) & set(answer_tokens)
+            gain = sum(weights.get(t, 1.0) for t in shared - covered) / total
+            if not chosen or gain >= CITATION_MARGINAL_MIN:
+                chosen.append(c)
+                covered |= shared
+            if len(chosen) == MAX_CITATIONS:
+                break
+        return chosen
+    # Nothing resembled the answer. For a question about the asker that is the expected
+    # outcome — the record answered it — so cite nothing. Otherwise keep what retrieval
+    # ranked, because losing every source is worse than an imperfect one.
+    return [] if record_only else fallback
+
+
+def _relevance(question: str, hit: dict) -> float:
+    """Score a hit on the local scorer's scale, whichever backend produced it."""
+    if settings.search_backend == "local":
+        return float(hit.get("score") or 0.0)
+    return relevance_score(question, hit)
+
+
+def _supporting_hits(question: str, hits: list[dict]) -> list[dict]:
+    """The hits worth citing: close to the best one, in the backend's own ranking.
+
+    On Azure the ranking is Azure's, not ours. Re-scoring its results with the keyword
+    scorer picked the wrong document outright — "I like dancing, how can the company
+    support my hobby" was answered from the Wellness Program, which Azure ranked first,
+    while the keyword scorer put the Bereavement policy top on 0.045 against Wellness's
+    0.036 and cited that instead. At those values the keyword score is noise. Measured
+    over seven questions Azure's own order picked the right document 6/7, the keyword
+    re-score 4/7.
+
+    The ratio is tighter here than for local search because RRF scores compress: an
+    unrelated hit still lands around 0.5 of the best, where cosine would have collapsed.
+    """
+    if not hits:
+        return []
+    if settings.search_backend == "azure":
+        best = float(hits[0].get("score") or 0.0)
+        if best <= 0:
+            return list(hits)
+        return [h for h in hits if float(h.get("score") or 0.0) >= best * AZURE_CITATION_RATIO]
+
+    scored = [(_relevance(question, hit), hit) for hit in hits]
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    best = scored[0][0]
+    floor = max(settings.local_min_score, best * CITATION_SCORE_RATIO)
+    return [hit for score, hit in scored if score >= floor]
+
+
+class RagService:
+    def stream(self, db: Session, question: str, role: str, profile: UserProfile | None = None) -> RagStream:
+        # Fixed answers from the employee record, used when there is no model to hand
+        # the record to. With LLM_BACKEND=azure the same questions take the richer path
+        # below instead: the model gets the record as context and answers in any
+        # phrasing, including ones these patterns were never written for.
+        if settings.llm_backend != "azure":
+            mine = profile_reply(question, profile)
+            if mine is not None:
+                return RagStream(citations=[], confidence=1.0, should_escalate=False, chunks=iter([mine]))
+
+        # Loose, keyword-level check. It only decides whether the model is told who is
+        # asking, so over-matching is harmless — see mentions_self().
+        #
+        # profile_reply is consulted too because the loose check was not a superset of
+        # the strict one: "who am i" fails mentions_self but profile_reply answers it,
+        # so the record path never ran and the question went to policy search, which
+        # replied that the documents do not cover it and cited two unrelated policies.
+        about_self = profile is not None and (mentions_self(question) or profile_reply(question, profile) is not None)
+        asker = profile_context(profile) if about_self else None
+
+        # The strict patterns answer a narrower question: is this *only* about the
+        # asker's record, with no policy component? If so, retrieval has nothing to
+        # contribute — skipping it drops an embedding call and a search query, and,
+        # more visibly, stops three unrelated policies being cited under "Your role is
+        # HR Administrator." Mixed questions ("how much PTO do I get as a manager")
+        # match the loose check but not this one, so they keep their citations.
+        if asker is not None and (profile_reply(question, profile) is not None or only_about_self(question, profile)):
+            return RagStream(
+                citations=[],
+                confidence=1.0,
+                should_escalate=False,
+                chunks=llm_service.answer_stream(question, [], asker),
+            )
+
+        # Greetings, small talk and plainly non-HR asks never reach search or the
+        # LLM. Confidence is 1.0 because the reply is exactly right for the message,
+        # and no escalation is offered — there is nothing for HR to answer.
+        fixed = canned_reply(question)
+        if fixed is not None:
+            return RagStream(citations=[], confidence=1.0, should_escalate=False, chunks=iter([fixed]))
+
+        hits = search_service.search(db, question, role)
+        top_score = float(hits[0]["score"]) if hits else 0.0
+
+        # Both backends get a relevance floor, but they cannot share a number: the local
+        # scorer returns cosine similarity, while Azure returns an RRF score that only
+        # ranks hits against each other. Azure therefore always came back with something
+        # and `not hits` was the only way to fail — which is why the deployed app
+        # effectively never offered to send a question to HR. Re-scoring Azure's top hit
+        # with the local scorer puts both on the same scale.
+        if hits:
+            # Score every hit, not just the first. Azure orders by RRF, which ranks hits
+            # against each other and does not track how well any of them answers the
+            # question — so the chunk that actually holds the answer routinely sits at
+            # position 3 or 4 behind a vaguer one. Judging only hits[0] made the app
+            # refuse questions the corpus answers ("where do I get my laptop" scored
+            # 0.047 at the top and 0.137 further down). Local search already sorts by
+            # this exact score, so there hits[0] is the best one anyway.
+            relevance = (
+                top_score
+                if settings.search_backend == "local"
+                else max(relevance_score(question, hit) for hit in hits)
+            )
+            # Two different questions, so two different signals. "Is there anything
+            # here worth answering from" is the best hit above. "Was retrieval actually
+            # confident" is the top-ranked hit, and when it is weak the answer deserves
+            # a Send to HR button next to it even though we do answer.
+            leading = top_score if settings.search_backend == "local" else relevance_score(question, hits[0])
+            threshold = settings.local_min_score if settings.search_backend == "local" else settings.azure_min_score
+            # A question about the asker's own record has no matching policy text by
+            # definition, so the relevance floor would escalate every one of them to HR
+            # for a fact the app already knows. The model can answer it from `asker`.
+            weak = relevance < threshold
+            low_confidence = weak and not about_self
+            # Retrieval found nothing worth citing, but the record can still answer it.
+            from_record_only = weak and about_self
+        else:
+            relevance = 0.0
+            leading = 0.0
+            low_confidence = True
+            from_record_only = False
+        if low_confidence:
+            return RagStream(
+                citations=[],
+                confidence=relevance,
+                should_escalate=True,
+                no_policy_match=True,
+                chunks=iter([NO_MATCH]),
+                # No policy matched, but "how do I change my bank account" is still
+                # plainly a request for a form. Nothing was cited, so this can only
+                # come from the question itself.
+                form=suggest_form(db, question, []),
+                raw_score=top_score,
+            )
+
+        # No citations when the answer comes from the employee record: the retrieved
+        # policies scored below the relevance floor, so citing them would footnote an
+        # answer about someone's job title with the travel policy.
+        #
+        # Otherwise, cite what actually supports the answer rather than whatever
+        # retrieval happened to return. Two rules:
+        #
+        #   * a hit has to be in the same league as the best one. Search always returns
+        #     its top_k, so a question one policy answers cleanly still came back with
+        #     three, and all three were cited — two of them for no reason.
+        #   * one chip per document. The old key included section and page, so three
+        #     chunks of the same PDF produced three identical-looking chips.
+        # Every retrieved document is a candidate, ranked or not. Ranking alone is not
+        # enough to choose: "what does the company entail" was answered out of the
+        # Employee Handbook, which Azure placed fifth of five and the ratio then cut,
+        # leaving three unrelated policies cited and the real source missing. The
+        # finished answer settles it — see verified_citations().
+        ranked = _supporting_hits(question, hits)
+        ranked_ids = {id(h) for h in ranked}
+        citations: list[dict] = []
+        candidates: list[dict] = []
+        candidate_texts: list[str] = []
+        seen: dict[str, int] = {}
+        for hit in ranked + [h for h in hits if id(h) not in ranked_ids]:
+            key = hit["document_id"]
+            if key in seen:
+                candidate_texts[seen[key]].append(hit.get("content") or "")
+                continue
+            seen[key] = len(candidates)
+            candidate_texts.append([hit.get("content") or ""])
+            entry = {
+                "document_id": hit["document_id"],
+                "external_document_id": hit.get("external_document_id"),
+                "title": hit["title"],
+                "section": hit.get("section_heading"),
+                "page": hit.get("page_number"),
+                "version": hit.get("version"),
+                "effective_date": hit.get("effective_date"),
+                "source_url": hit.get("source_url"),
+            }
+            candidates.append(entry)
+            # `citations` stays what retrieval ranked: the fallback when the answer
+            # turns out not to resemble any single excerpt closely.
+            if id(hit) in ranked_ids and len(citations) < MAX_CITATIONS:
+                citations.append(entry)
+
+        return RagStream(
+            citations=citations,
+            candidates=candidates,
+            candidate_texts=candidate_texts,
+            record_only=about_self,
+            # Only the hits that actually supported the answer are considered, so a form
+            # named in a chunk that was retrieved but not cited is not offered.
+            form=suggest_form(db, question, ranked),
+            confidence=relevance,
+            # Answered, but offer HR anyway when retrieval was not confident or nothing
+            # was solid enough to cite. Previously this was always False, so a reply
+            # that said "I can forward your question to HR" appeared with no button to
+            # do it — the employee was told to take an action the screen did not offer.
+            # ... except when the answer came from the employee's own record, which is
+            # citation-free by design and is not something HR needs to look up.
+            should_escalate=(leading < threshold or not citations) and not from_record_only,
+            chunks=llm_service.answer_stream(question, hits, asker),
+            raw_score=top_score,
+        )
+
+    def answer(self, db: Session, question: str, role: str, profile: UserProfile | None = None) -> RagResult:
+        """Blocking form, for callers that want the finished answer in one piece."""
+        prepared = self.stream(db, question, role, profile)
+        text = "".join(prepared.chunks)
+        citations = prepared.citations
+        # Same check the streaming endpoint applies once its answer is complete.
+        citations = verified_citations(text, prepared.candidates, prepared.candidate_texts,
+                                       prepared.citations, prepared.record_only)
+        return RagResult(
+            answer=text,
+            citations=citations,
+            confidence=prepared.confidence,
+            should_escalate=prepared.should_escalate,
+        )
+
+
+rag_service = RagService()

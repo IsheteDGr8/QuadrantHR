@@ -1,0 +1,417 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 4px;
+}
+.title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 22px;
+  margin: 0;
+}
+.uploadBtn {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.uploadBtn:hover {
+  background: var(--accent-hover);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 40px;
+  padding: 0 14px;
+  margin: 16px 0 14px;
+  background: var(--surface);
+  border: 1px solid rgba(var(--overlay-rgb), 0.1);
+  border-radius: 10px;
+  box-sizing: border-box;
+  transition: border-color var(--duration-fast) var(--ease);
+}
+.search:focus-within {
+  border-color: rgba(124, 77, 255, 0.55);
+}
+.search svg {
+  flex: none;
+  color: var(--text-dim);
+}
+.search input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 13.5px;
+}
+.search input::placeholder {
+  color: rgba(var(--text-rgb), 0.36);
+}
+
+/* Category filter. Scrolls sideways rather than wrapping, so a long list of
+   categories never pushes the table down the page. */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+.tab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  overflow: hidden;
+  transition: color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+.tab:hover {
+  color: var(--text);
+  border-color: rgba(124, 77, 255, 0.4);
+}
+/* The pill is a container so the delete control can sit beside the label without
+   nesting one button inside another. */
+.tabLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 7px 13px;
+  cursor: pointer;
+}
+.tabDelete {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  opacity: 0.5;
+  background: none;
+  border: none;
+  border-left: 1px solid rgba(var(--overlay-rgb), 0.14);
+  padding: 7px 9px;
+  align-self: stretch;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+.tabDelete:hover {
+  opacity: 1;
+  background: rgba(255, 107, 107, 0.18);
+  color: var(--danger);
+}
+.tabActive {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.tabCount {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--overlay-rgb), 0.12);
+  color: inherit;
+}
+.tab:not(.tabActive) .tabCount {
+  background: rgba(var(--overlay-rgb), 0.08);
+  color: var(--text-dimmer);
+}
+
+.table {
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  overflow: visible;
+}
+.tableHead {
+  display: grid;
+  grid-template-columns: 1fr 160px 90px;
+  gap: 10px;
+  padding: 12px 16px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border-hairline);
+  background: var(--surface);
+  border-radius: 12px 12px 0 0;
+}
+.tableRow {
+  display: grid;
+  grid-template-columns: 1fr 160px 90px;
+  gap: 10px;
+  align-items: center;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+}
+.tableRow:last-child {
+  border-bottom: none;
+}
+.nameCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nameCell svg {
+  flex: none;
+  color: var(--accent-text);
+}
+.dateCell {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.actionCell {
+  display: flex;
+  justify-content: flex-end;
+  position: relative;
+}
+.kebabBtn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+.kebabBtn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.kebabMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  padding: 6px;
+  min-width: 190px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  z-index: 20;
+  animation: dropdownIn var(--duration-fast) var(--ease) both;
+}
+.kebabItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+.kebabItem:hover {
+  background: var(--surface);
+}
+.kebabItem.danger {
+  color: var(--danger);
+}
+.kebabDivider {
+  height: 1px;
+  background: var(--border-hairline);
+  margin: 4px 2px;
+}
+.empty {
+  padding: 22px 16px;
+  font-size: 13px;
+  color: var(--text-dimmer);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Add-category control, sitting at the end of the tab row. Dashed so it reads as an
+   action rather than another filter. */
+.addTab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--text-dimmer);
+  background: none;
+  border: 1px dashed var(--border-hairline);
+  border-radius: var(--radius-pill);
+  padding: 7px 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+.addTab:hover {
+  color: var(--accent-text);
+  border-color: rgba(124, 77, 255, 0.5);
+}
+.notice {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.pickerBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  animation: backdropIn var(--duration-fast) var(--ease) both;
+}
+.picker {
+  width: min(360px, calc(100vw - 32px));
+  background: var(--surface-2);
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+  padding: 18px;
+  box-sizing: border-box;
+  animation: modalIn var(--duration-base) var(--ease) both;
+}
+@keyframes backdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pickerBackdrop,
+  .picker,
+  .kebabMenu {
+    animation: none;
+  }
+}
+.pickerTitle {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 15px;
+  margin: 0;
+}
+.pickerDoc {
+  margin: 4px 0 14px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+.pickerList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.pickerItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 9px 11px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+.pickerItem:hover {
+  background: var(--surface);
+  border-color: var(--border-hairline);
+}
+.pickerItemActive {
+  border-color: rgba(124, 77, 255, 0.45);
+  color: var(--accent-text);
+}
+.pickerCurrent {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+}
+.pickerCancel {
+  width: 100%;
+  margin-top: 14px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
+.pickerCancel:hover {
+  color: var(--text);
+}
+
+/* Upload Form sits next to Upload Document. The secondary variant keeps the primary
+   action visually dominant, since publishing a policy is the far more common one. */
+.headerActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.uploadBtn[data-variant='secondary'] {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid currentColor;
+}

@@ -1,0 +1,127 @@
+.ticker {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  /* Sized for a projector, not for a laptop at arm's length. The bar is read from
+     across a room during demos and screen shares, where a 32px strip of 12.5px text
+     was the first thing to become illegible once the stream was compressed. */
+  height: 46px;
+  flex: none;
+  background: var(--bg-rail);
+  border-bottom: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+.tag {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  background: rgba(var(--overlay-rgb), 0.03);
+  border-right: 1px solid var(--border-subtle);
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rail-text);
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rail-text);
+  animation: tickerPulse 1.8s ease-in-out infinite;
+}
+.viewport {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 44px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 44px), transparent 100%);
+}
+.track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  /* Duration is set inline from the measured width — see SCROLL_PX_PER_SECOND in
+     NewsTicker.tsx. This value is only the fallback before the first measurement. */
+  animation: tickerScroll 200s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* A constantly moving strip of text is exactly what this setting is for. The items
+     stay readable from the start of the track rather than being hidden. */
+  .track {
+    animation: none;
+  }
+}
+.ticker:hover .track {
+  animation-play-state: paused;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 18px 0 28px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.item strong {
+  color: rgba(var(--text-rgb), 0.82);
+  font-weight: 600;
+}
+/* Feed items link out; HR banners do not. Underline only on hover so the resting
+   bar still reads as one strip of text rather than a row of links. */
+.linked {
+  text-decoration: none;
+  cursor: pointer;
+}
+.linked:hover strong,
+.linked:focus-visible strong {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.linked:focus-visible {
+  outline: 2px solid var(--rail-text);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.itemDate {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(151, 160, 201, 0.72);
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+.bullet {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(var(--text-rgb), 0.25);
+  margin-left: 8px;
+}
+
+@keyframes tickerScroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes tickerPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}

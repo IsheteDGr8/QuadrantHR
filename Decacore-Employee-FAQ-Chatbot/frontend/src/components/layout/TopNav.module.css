@@ -1,0 +1,136 @@
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  flex: none;
+
+  /* Floats on the same material as the sidebar. Left flush it read as a flat strip
+     bolted above a floating panel, which drew attention to the seam. */
+  margin: 10px 10px 0;
+  border-radius: 18px;
+  background: var(--lg-sheen), var(--lg-tint);
+  backdrop-filter: var(--lg-filter);
+  -webkit-backdrop-filter: var(--lg-filter);
+  box-shadow: var(--lg-rim), var(--lg-glow), var(--lg-lift);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .nav {
+    background: var(--bg-chrome);
+  }
+}
+/* Sits hard right, opposite the burger and brand. */
+.themeToggle {
+  margin-left: auto;
+}
+/*
+ * Collapse toggle. Three bars that fan apart on hover and fold into a chevron when
+ * the sidebar is shut.
+ *
+ * The bars are absolutely positioned rather than laid out with a flex gap: gap can
+ * only push them apart, while the fan and the chevron both need each bar to move,
+ * rotate and change length independently from a shared centre.
+ */
+.burger {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  flex: none;
+  transition: background var(--duration-fast) var(--ease);
+}
+.burger:hover,
+.burger:focus-visible {
+  background: rgba(var(--overlay-rgb), 0.08);
+}
+.burger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.burger span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  /* Slightly wider and squarer-ended than a hairline burger: at 16x2 in a 32px
+     button the glyph read as small and tentative next to the wordmark. */
+  width: 18px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+  /* Every bar shares one origin; translate does the spacing, so the fan and the
+     chevron are both just different translate/rotate values. */
+  transition:
+    translate 260ms cubic-bezier(0.76, 0, 0.24, 1),
+    rotate 260ms cubic-bezier(0.76, 0, 0.24, 1),
+    width 260ms cubic-bezier(0.76, 0, 0.24, 1),
+    opacity 180ms var(--ease);
+}
+.burger span:nth-child(1) {
+  translate: -50% calc(-50% - 5px);
+}
+.burger span:nth-child(2) {
+  translate: -50% -50%;
+}
+.burger span:nth-child(3) {
+  translate: -50% calc(-50% + 5px);
+}
+
+/* Fan: the outer bars push further out and the middle one shortens, so the stack
+   opens up rather than just drifting apart. */
+.burger:hover span:nth-child(1),
+.burger:focus-visible span:nth-child(1) {
+  translate: -50% calc(-50% - 7px);
+}
+.burger:hover span:nth-child(3),
+.burger:focus-visible span:nth-child(3) {
+  translate: -50% calc(-50% + 7px);
+}
+.burger:hover span:nth-child(2),
+.burger:focus-visible span:nth-child(2) {
+  width: 9px;
+}
+
+/* Collapsed: fold into a chevron pointing the way the sidebar will go. */
+.burger.collapsed span:nth-child(1) {
+  width: 11px;
+  /* Nudged 1px right of centre: a chevron's visual weight sits behind its point, so
+     a mathematically centred one looks like it has drifted left. */
+  translate: calc(-50% + 1px) calc(-50% - 3.5px);
+  rotate: -48deg;
+}
+.burger.collapsed span:nth-child(2) {
+  /* The shaft would lie across the arrowhead, so it collapses to nothing rather than
+     just fading — a half-visible stub behind the point looked like a rendering fault. */
+  opacity: 0;
+  width: 0;
+}
+.burger.collapsed span:nth-child(3) {
+  width: 11px;
+  translate: calc(-50% + 1px) calc(-50% + 3.5px);
+  rotate: 48deg;
+}
+/* Hovering the chevron leans it toward the edge it will open from. */
+.burger.collapsed:hover span:nth-child(1) {
+  translate: calc(-50% + 3px) calc(-50% - 3.5px);
+}
+.burger.collapsed:hover span:nth-child(3) {
+  translate: calc(-50% + 3px) calc(-50% + 3.5px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burger span {
+    transition-duration: 1ms;
+  }
+}
+.brand {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 18px;
+  margin-right: auto;
+  letter-spacing: -0.01em;
+}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/assets/mascot-avatar.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>QBot — Employee FAQ Assistant</title>
+    <!--
+      Applies the saved theme before the first paint. React sets this too, but not
+      until the bundle has parsed and mounted — long enough to flash a full dark screen
+      at someone who chose light. Keep the storage key in step with THEME_STORAGE_KEY
+      in src/context/ThemeContext.tsx.
+    -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('qbot-theme');
+          var theme =
+            saved === 'light' || saved === 'dark'
+              ? saved
+              : window.matchMedia('(prefers-color-scheme: light)').matches
+                ? 'light'
+                : 'dark';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          /* Private-mode localStorage throws; the CSS default (dark) still applies. */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Generated at deploy time into public/config.js and copied to the site root
+         by Vite. Loaded before the bundle so API_BASE is set on first render.
+         Absent locally, where the client falls back to http://localhost:8000. -->
+    <script src="/config.js"></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,289 @@
+/*
+ * Dark is the default and stays the unqualified :root block, because that is what the
+ * app was designed in — every component was authored against it, so anything not yet
+ * themed still lands somewhere sensible.
+ *
+ * Two of these are channel triples rather than colours: --overlay-rgb and --text-rgb.
+ * Components use them as rgba(var(--overlay-rgb), 0.12), which keeps each hand-tuned
+ * alpha exactly as designed while letting the theme decide whether the base is light
+ * or dark. Without that, ~60 white-on-dark borders and text tints would have needed a
+ * named token each, and every one would have been a place for the two themes to drift.
+ */
+:root {
+  --overlay-rgb: 255, 255, 255;
+  --text-rgb: 244, 242, 249;
+
+  --bg-page: #0f0c14;
+  --bg-chrome: #131019;
+  --surface: #1c1826;
+  --surface-2: #241f31;
+  --surface-2-alt: #241f30;
+  --border-hairline: rgba(var(--overlay-rgb), 0.09);
+  --border-subtle: rgba(var(--overlay-rgb), 0.07);
+  --border-faint: rgba(var(--overlay-rgb), 0.05);
+  --text: #f4f2f9;
+  --text-muted: rgba(var(--text-rgb), 0.62);
+  --text-faint: rgba(var(--text-rgb), 0.42);
+  --text-dim: rgba(var(--text-rgb), 0.56);
+  --text-dimmer: rgba(var(--text-rgb), 0.4);
+  --accent: #7c4dff;
+  --accent-hover: #8f63ff;
+  --accent-text: #b79cff;
+  --accent-text-2: #9a73ff;
+  /* Hover/emphasis step above --accent-text. Brighter on dark, darker on light. */
+  --accent-text-strong: #d8caff;
+  --success: #7fd99a;
+  --danger: #ff8a8a;
+  --warn: #f2b04d;
+  --paper-bg: #e9e7ef;
+  --paper-text: #1b1b1b;
+  --paper-text-muted: #4a4a4a;
+
+  /*
+   * Frosted chrome. Translucent fill + blur, with a bright top edge and a dark bottom
+   * edge — the pair is what reads as a pane of glass rather than as a flat tint; the
+   * light catches the lip and the far side falls into shadow.
+   *
+   * These only look like glass because AmbientBackground sits fixed behind the whole
+   * app: the blur needs a moving, textured backdrop to refract. Over a flat colour it
+   * would be indistinguishable from a solid fill.
+   */
+  /*
+   * Liquid glass.
+   *
+   * Frosting alone never read as glass here, for two reasons the reference designs
+   * make obvious: theirs float as rounded panels with the backdrop visible *around*
+   * them, and they sit on photographs. A flush, edge-to-edge panel on a near-flat page
+   * has no rim to catch light and nothing behind it to bend.
+   *
+   * So the panel detaches and floats, and the rim is built explicitly:
+   *   --lg-rim   the lit top-left edge and shaded bottom-right one, which is what
+   *              gives the pane thickness rather than just tint
+   *   --lg-glow  an inner bloom just inside the rim, where light pools in real glass
+   *   --lg-lift  the drop shadow that separates it from the page
+   * brightness() in the filter is the "liquid" part: glass brightens what is behind it
+   * as well as blurring it, and without it the panel reads as a grey filter.
+   */
+  --lg-filter: blur(30px) saturate(200%) brightness(1.12);
+  --lg-tint: rgba(38, 32, 56, 0.3);
+  --lg-rim:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 1px 0 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.38),
+    inset -1px 0 0 rgba(0, 0, 0, 0.24);
+  --lg-glow: inset 0 2px 22px rgba(255, 255, 255, 0.09);
+  --lg-lift: 0 18px 48px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --lg-sheen: linear-gradient(
+    148deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.05) 26%,
+    rgba(255, 255, 255, 0) 52%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+
+  --glass-bg: rgba(30, 25, 44, 0.34);
+  --glass-edge-top: rgba(255, 255, 255, 0.22);
+  --glass-edge-bottom: rgba(0, 0, 0, 0.3);
+  --glass-blur: blur(26px) saturate(180%);
+  /*
+   * The specular sheen, and the part that actually sells it.
+   *
+   * Blur alone did nothing here: the ambient blobs sit at 0.11-0.16 opacity under an
+   * 80px blur over a near-black page, so the backdrop behind the sidebar is close to
+   * flat — and frosting a flat surface is indistinguishable from a solid fill. iOS
+   * glass reads the way it does because light rakes across the pane and catches its
+   * edges, so that highlight is painted explicitly rather than hoped for.
+   */
+  --glass-sheen: linear-gradient(
+    152deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.05) 22%,
+    rgba(255, 255, 255, 0) 48%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+
+  /* The news strip and the darker inset panels, which sit a shade off the surrounding
+     chrome rather than matching it. */
+  --bg-rail: #1a1622;
+  --bg-rail-2: #221d2e;
+  --rail-text: #97a0c9;
+
+  /* Shared source of truth for AmbientBackground's dot grid, read at runtime via
+     getComputedStyle since a <canvas> can't consume a CSS custom property directly. */
+  --ambient-grid-dot: rgba(233, 233, 237, 0.13);
+
+  color-scheme: dark;
+
+  --font-heading: 'Instrument Sans', system-ui, sans-serif;
+  --font-body: 'Hanken Grotesk', system-ui, sans-serif;
+
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 100px;
+
+  --sidebar-w: 250px;
+  --sidebar-w-collapsed: 64px;
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+}
+
+/*
+ * Light theme. Only overrides — anything not listed here inherits from :root above,
+ * so a token added later is never silently missing in one theme.
+ *
+ * The accent purple is deliberately unchanged: it carries the brand, it already meets
+ * contrast on both grounds, and the 45 accent tints scattered through the components
+ * were tuned against it.
+ */
+:root[data-theme='light'] {
+  --overlay-rgb: 17, 13, 26;
+  --text-rgb: 26, 22, 38;
+
+  --bg-page: #f7f5fb;
+  --bg-chrome: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f1eef8;
+  --surface-2-alt: #f0edf7;
+
+  /* Hairlines need more alpha on light ground than on dark to read as the same weight;
+     a 0.09 dark-on-white line is far fainter than a 0.09 white-on-near-black one. */
+  --border-hairline: rgba(var(--overlay-rgb), 0.14);
+  --border-subtle: rgba(var(--overlay-rgb), 0.1);
+  --border-faint: rgba(var(--overlay-rgb), 0.07);
+
+  --ambient-grid-dot: rgba(34, 35, 46, 0.13);
+
+  --text: #17131f;
+  --text-muted: rgba(var(--text-rgb), 0.72);
+  --text-dim: rgba(var(--text-rgb), 0.66);
+  /* 0.62 is the floor that still clears AA (4.5:1) against --surface-2, the tinted
+     ground these sit on most often. Dark theme gets away with 0.42/0.40 because a
+     light tint fades far more slowly on near-black than a dark one does on white —
+     carrying the dark alphas across is what makes a naive light mode look washed out.
+     Verified by computing the ratios, not by eye. */
+  --text-faint: rgba(var(--text-rgb), 0.62);
+  --text-dimmer: rgba(var(--text-rgb), 0.62);
+
+  /* The dark-theme accent text tints are pale — legible on near-black, washed out on
+     white — so these darken rather than lighten. */
+  --accent-text: #5b31d6;
+  --accent-text-2: #6b3fe4;
+
+  /* #1f8f4d measured 4.12:1 on white — under AA for body text. */
+  --success: #18803f;
+  --danger: #c0392f;
+  --warn: #9a6410;
+
+  --accent-text-strong: #3d1ea8;
+
+  /* More opaque than the dark theme: white glass over a pale backdrop has far less
+     contrast to work with, and at 0.55 the text behind it showed through as smudge. */
+  /* Light glass needs a whiter tint and a much softer lift; the dark theme's shadow
+     reads as a smudge on a pale page. */
+  --lg-filter: blur(30px) saturate(190%) brightness(1.06);
+  --lg-tint: rgba(255, 255, 255, 0.46);
+  --lg-rim:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 1px 0 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(17, 13, 26, 0.1),
+    inset -1px 0 0 rgba(17, 13, 26, 0.06);
+  --lg-glow: inset 0 2px 20px rgba(255, 255, 255, 0.6);
+  --lg-lift: 0 14px 38px rgba(17, 13, 26, 0.1), 0 2px 6px rgba(17, 13, 26, 0.06);
+  --lg-sheen: linear-gradient(
+    148deg,
+    rgba(255, 255, 255, 0.85) 0%,
+    rgba(255, 255, 255, 0.3) 24%,
+    rgba(124, 77, 255, 0.05) 56%,
+    rgba(255, 255, 255, 0.45) 100%
+  );
+
+  --glass-bg: rgba(255, 255, 255, 0.5);
+  --glass-edge-top: rgba(255, 255, 255, 0.95);
+  --glass-edge-bottom: rgba(17, 13, 26, 0.1);
+  /* Light glass catches a cooler, tighter highlight; the same white ramp as the dark
+     theme just washes out to nothing against a pale page. */
+  --glass-sheen: linear-gradient(
+    152deg,
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(255, 255, 255, 0.25) 20%,
+    rgba(124, 77, 255, 0.04) 55%,
+    rgba(255, 255, 255, 0.35) 100%
+  );
+
+  /* The news strip follows the theme rather than staying dark. Left dark it read as a
+     stray black bar pinned above a white app, not as branded chrome. */
+  --bg-rail: #efeaf9;
+  --bg-rail-2: #ebe6f6;
+  --rail-text: #5f5a7a;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Smooths the light/dark toggle: every element cross-fades its themed colors
+   instead of hard-cutting. Low specificity (bare *), so any component's own
+   transition (e.g. a faster hover transition on the same properties) wins
+   automatically — this only fills the gap for elements that don't set one. */
+*,
+*::before,
+*::after {
+  transition: background-color var(--duration-slow) var(--ease), border-color var(--duration-slow) var(--ease),
+    color var(--duration-slow) var(--ease);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-chrome);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+a {
+  color: var(--accent-text-2);
+}
+a:hover {
+  color: var(--accent-text);
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 77, 255, 0.5);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 77, 255, 0.8);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(124, 77, 255, 0.5) transparent;
+}

@@ -1,0 +1,111 @@
+# Backend CI/CD — Azure DevOps.
+#
+# Deploys straight to production. The dev slot and swap step were removed: with one
+# team and one environment the extra hop only meant every change needed a manual swap
+# before anyone could see it, and twice it caused "deployed but not live" confusion.
+#
+# The repo lives on GitHub, so this pipeline needs a GitHub service connection as
+# well as the Azure one. See infra/README.md.
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - backend/**
+      - azure-pipelines.yml
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - backend/**
+
+variables:
+  pythonVersion: '3.12'          # must match the App Service runtime
+  azureSubscription: 'decacore-azure'   # name of the ARM service connection
+  webAppName: 'qthr-faq-api'
+
+stages:
+  - stage: Test
+    displayName: Test
+    jobs:
+      - job: pytest
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(pythonVersion)'
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r backend/requirements.txt
+              pip install pytest
+            displayName: Install dependencies
+
+          # Tests run against SQLite with adapters in local mode, so CI needs no
+          # Azure credentials and cannot touch the shared database or search index.
+          - script: |
+              cd backend
+              AUTH_MODE=dev \
+              DATABASE_URL='sqlite:///./data/ci.db' \
+              STORAGE_BACKEND=local \
+              SEARCH_BACKEND=local \
+              LLM_BACKEND=offline \
+              NOTIFICATION_BACKEND=log \
+              python -m pytest tests -q
+            displayName: Run tests
+
+  - stage: Deploy
+    displayName: Deploy to production
+    dependsOn: Test
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      # A plain job, not a `deployment` job. Deployment jobs require an Azure DevOps
+      # Environment to exist and be authorized, and ours only ever held a name — no
+      # approval gates, no checks. Creating one needs a PAT scope we do not have, so
+      # it was pure ceremony standing between a push and a deploy.
+      - job: deployProduction
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+
+          # Stamped into the package so /health can report which commit is actually
+          # serving traffic. Without it "is my change live yet?" has no answer short
+          # of finding a behaviour that differs between builds.
+          - script: echo "$(Build.SourceVersion)" > "$(Build.SourcesDirectory)/backend/app/BUILD_SHA"
+            displayName: Stamp build SHA
+
+          # Only backend/ is packaged, and its contents become the deploy root
+          # so `app.main:app` resolves against the configured startup command.
+          - task: ArchiveFiles@2
+            inputs:
+              rootFolderOrFile: '$(Build.SourcesDirectory)/backend'
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: '$(Build.ArtifactStagingDirectory)/backend.zip'
+              replaceExistingArchive: true
+
+          # SCM_DO_BUILD_DURING_DEPLOYMENT=true is set on the app, so App Service
+          # installs requirements.txt server-side after the zip lands.
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              appType: 'webAppLinux'
+              appName: '$(webAppName)'
+              package: '$(Build.ArtifactStagingDirectory)/backend.zip'
+              runtimeStack: 'PYTHON|3.12'
+
+          - script: |
+              for i in $(seq 1 30); do
+                code=$(curl -s -o /dev/null -w '%{http_code}' https://qthr-faq-api.azurewebsites.net/health)
+                if [ "$code" = "200" ]; then echo "healthy"; exit 0; fi
+                echo "attempt $i: HTTP $code"; sleep 10
+              done
+              echo "health check never returned 200"; exit 1
+            displayName: Smoke test /health

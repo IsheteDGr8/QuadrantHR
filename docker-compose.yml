@@ -1,12 +1,9 @@
-# QuadrantHR — local orchestration for legacy hackathon services.
+# QuadrantHR — local orchestration for the 7 in-scope HR modules.
 # API containers only in Phase 0; frontends still run via Vite/Next locally.
 #
 # Usage:
 #   docker compose up --build -d
 #   docker compose ps
-#
-# Incoming modules (Policy Generator / FAQ) may land as new folders;
-# Bug Busters already provides a policy-generator API on :8106.
 
 name: quadranthr
 
@@ -86,15 +83,12 @@ services:
     environment:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
-      # Optional: set SESSION_API_KEY in .env for authenticated binds
       SESSION_API_KEY: ${SESSION_API_KEY:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-}
     networks:
       - quadranthr-net
     restart: unless-stopped
 
-  # Present in-repo today (Bug Busters). Treat as the Policy Generator slot;
-  # a dedicated FAQ chatbot service can be added on :8107 when that codebase lands.
   policy-generator:
     build:
       context: "./Bug Busters"
@@ -105,8 +99,22 @@ services:
     networks:
       - quadranthr-net
     restart: unless-stopped
-    profiles:
-      - full
+
+  employee-faq:
+    build:
+      context: ./Decacore-Employee-FAQ-Chatbot
+      dockerfile: Dockerfile
+    container_name: quadranthr-employee-faq
+    ports:
+      - "8107:8000"
+    environment:
+      PORT: "8000"
+    volumes:
+      - faq-storage:/app/data/storage
+    networks:
+      - quadranthr-net
+    restart: unless-stopped
 
 volumes:
   ticketgenie-data:
+  faq-storage:
