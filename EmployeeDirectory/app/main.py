@@ -70,7 +70,7 @@ from app.people import find_people as find_people_service
 from app.people import get_person as get_person_service
 from app.people import update_own_bio as update_own_bio_service
 from app.people import update_own_name_pronunciation as update_own_name_pronunciation_service
-from app.permissions import resolve_view_mode
+from app.permissions import ViewMode, resolve_view_mode
 from app.assistant_conversations import (
     ConversationNotFound,
     append_turn,

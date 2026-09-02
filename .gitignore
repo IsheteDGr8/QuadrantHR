@@ -49,3 +49,6 @@ Thumbs.db
 !**/docs/**/*.pdf
 **/data/output/
 ResumeScreening/**/resume_assistant.db
+
+backend/.venv/
+
