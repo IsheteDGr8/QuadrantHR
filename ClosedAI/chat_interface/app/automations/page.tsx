@@ -1,0 +1,12 @@
+"use client"
+
+import { AppShell } from "@/components/app-shell"
+import { AppProviders } from "@/components/providers"
+
+export default function AutomationsRoute() {
+  return (
+    <AppProviders>
+      <AppShell />
+    </AppProviders>
+  )
+}

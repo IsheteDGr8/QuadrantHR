@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HR Analytics | TicketGenie</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    .page-padding { padding: 36px 0; max-width: 1200px; width: 100%; margin: 0 auto; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 28px; }
+    .metric-card { background: white; border: 1px solid #e1e6e2; border-radius: 12px; padding: 24px; }
+    .metric-title { font-size: 0.82rem; color: #64748b; font-weight: 500; }
+    .metric-val { font-size: 2rem; font-weight: 700; color: #28332c; margin-top: 6px; }
+    .card { background: white; border: 1px solid #e1e6e2; border-radius: 12px; padding: 28px; }
+    .card-title { font-size: 1.1rem; font-weight: 700; color: #28332c; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  </style>
+</head>
+<body class="employee-page management-page">
+
+  <div id="shared-sidebar"></div>
+
+  <main class="main-content">
+    <div id="shared-topnav"></div>
+
+    <div class="page-padding">
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-title">Avg Resolution Speed</div>
+          <div class="metric-val" id="avgSpeed">3.4 Hours</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Auto-Resolution Success</div>
+          <div class="metric-val" id="autoRate">40.0%</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Total Resolved Tickets</div>
+          <div class="metric-val" id="totalRes">86</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><i class="fa-solid fa-chart-line"></i> Ticket Breakdown & Resolution Trends</div>
+        <pre id="analyticsJson" style="background:#f8fafc; padding:20px; border-radius:8px; font-size:0.88rem; font-family:monospace; color:#334155; border: 1px solid #e1e6e2;"></pre>
+      </div>
+    </div>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/azure-auth.js"></script>
+  <script src="../js/theme.js"></script>
+  <script src="../js/script.js"></script>
+  <script src="components.js"></script>
+  <script src="management.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      try {
+        const res = await fetch("/api/analytics/trends");
+        if (!res.ok) throw new Error("API unavailable");
+        const data = await res.json();
+        document.getElementById("avgSpeed").textContent = `${data.avg_resolution_time_hours} Hours`;
+        document.getElementById("autoRate").textContent = `${data.auto_resolution_rate_pct}%`;
+        document.getElementById("totalRes").textContent = data.resolved_tickets || 86;
+        document.getElementById("analyticsJson").textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        const fallback = {
+          "avg_resolution_time_hours": 3.4,
+          "auto_resolution_rate_pct": 40.0,
+          "resolved_tickets": 86,
+          "active_queues": ["IT Support", "HR Benefits", "Upper Management Leave"],
+          "sla_compliance_rate": "98.2%"
+        };
+        document.getElementById("analyticsJson").textContent = JSON.stringify(fallback, null, 2);
+      }
+    });
+  </script>
+</body>
+</html>

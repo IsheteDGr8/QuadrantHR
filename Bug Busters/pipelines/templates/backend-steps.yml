@@ -1,0 +1,48 @@
+# Build, lint and test the Python backend.
+# Matches the actual repo: backend/ has requirements.txt at its root and a
+# tests/ subfolder (test_main.py confirmed present there).
+
+parameters:
+  - name: pythonVersion
+    type: string
+    default: '3.11'
+  - name: workingDir
+    type: string
+    default: 'backend'
+
+steps:
+  - task: UsePythonVersion@0
+    displayName: 'Use Python ${{ parameters.pythonVersion }}'
+    inputs:
+      versionSpec: '${{ parameters.pythonVersion }}'
+
+  - script: |
+      set -e
+      python -m pip install --upgrade pip
+      pip install -r requirements.txt
+    displayName: 'Install dependencies'
+    workingDirectory: '${{ parameters.workingDir }}'
+
+  - script: |
+      set -e
+      pytest tests/ --junitxml=test-results.xml
+    displayName: 'Run tests (pytest)'
+    workingDirectory: '${{ parameters.workingDir }}'
+
+  - task: PublishTestResults@2
+    displayName: 'Publish test results'
+    condition: succeededOrFailed()
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: '${{ parameters.workingDir }}/test-results.xml'
+
+  - script: |
+      set -e
+      mkdir -p $(Build.ArtifactStagingDirectory)/backend
+      zip -r $(Build.ArtifactStagingDirectory)/backend/backend.zip . \
+        -x "*.git*" -x "__pycache__/*" -x "*.pytest_cache*" -x "tests/*"
+    displayName: 'Package backend as zip'
+    workingDirectory: '${{ parameters.workingDir }}'
+
+  - publish: $(Build.ArtifactStagingDirectory)/backend/backend.zip
+    artifact: backend-package

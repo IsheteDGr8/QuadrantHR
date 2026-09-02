@@ -1,0 +1,68 @@
+name: terraform-azure
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  id-token: write
+  contents: read
+
+# plan (every PR) and deploy (every push to main) both touch the same Terraform
+# state with nothing serializing them -- overlapping runs race for the state lock.
+# Queuing them here, rather than just widening -lock-timeout below, is what
+# actually stops the race instead of just waiting longer for it to resolve.
+concurrency:
+  group: terraform-azure-state
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+        working-directory: infra
+      - run: terraform plan -lock-timeout=5m -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}" -var="pipeline_identity_object_id=${{ secrets.PIPELINE_IDENTITY_OBJECT_ID }}"
+        working-directory: infra
+        env:
+          TF_VAR_local_dev_object_ids: ${{ secrets.LOCAL_DEV_OBJECT_IDS }}
+          # These four were declared with empty-string defaults and never passed here,
+          # so every apply silently provisioned Document Intelligence and Azure OpenAI
+          # as unconfigured regardless of what anyone set elsewhere. Safe either way if
+          # the underlying secrets do not exist yet -- GitHub resolves an unset secret to
+          # an empty string, matching each variable's own default, not a failure.
+          TF_VAR_doc_intelligence_endpoint: ${{ secrets.DOC_INTELLIGENCE_ENDPOINT }}
+          TF_VAR_doc_intelligence_key: ${{ secrets.DOC_INTELLIGENCE_KEY }}
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          TF_VAR_azure_openai_endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+        working-directory: infra
+      - run: terraform apply -auto-approve -lock-timeout=5m -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}" -var="pipeline_identity_object_id=${{ secrets.PIPELINE_IDENTITY_OBJECT_ID }}"
+        working-directory: infra
+        env:
+          TF_VAR_local_dev_object_ids: ${{ secrets.LOCAL_DEV_OBJECT_IDS }}
+          TF_VAR_doc_intelligence_endpoint: ${{ secrets.DOC_INTELLIGENCE_ENDPOINT }}
+          TF_VAR_doc_intelligence_key: ${{ secrets.DOC_INTELLIGENCE_KEY }}
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          TF_VAR_azure_openai_endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}

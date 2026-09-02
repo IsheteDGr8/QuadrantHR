@@ -1,0 +1,21 @@
+name: Mirror to Azure Repos
+
+on:
+  push:
+    branches:
+      - '**'
+  delete:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Azure Repos
+        env:
+          AZURE_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: |
+          git push --force https://x-access-token:${AZURE_PAT}@dev.azure.com/Intern2026/Azure%20Rangers/_git/Azure%20Rangers HEAD:${GITHUB_REF}

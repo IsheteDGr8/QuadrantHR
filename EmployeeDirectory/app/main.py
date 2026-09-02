@@ -1,0 +1,2520 @@
+from contextlib import asynccontextmanager
+import json
+from datetime import date
+from pathlib import Path
+from typing import AsyncIterator, Literal
+
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
+
+# --- OpenTelemetry Imports ---
+
+from app.auth import AuthenticatedUser, get_current_user
+from app.certifications import LocalStatusWritesDisabled, UnknownCourse, record_course_status
+from app import config
+from app.analytics import DashboardForbidden
+from app.analytics import resolve_scope
+from app.analytics import insights as insights_service
+from app.analytics import org_unit_options as org_unit_options_service
+from app.analytics import overview as dashboard_overview_service
+from app.analytics import project_coverage as project_coverage_service
+from app.analytics import scope_for as dashboard_scope_service
+from app.analytics import send_reminders as send_reminders_service
+from app.analytics import skill_detail as skill_detail_service
+from app.analytics import skill_supply_demand as skill_supply_demand_service
+from app.analytics import training_analytics as training_analytics_service
+from app.analytics import training_roster as training_roster_service
+from app.auth import AuthenticatedUser, assert_dev_auth_is_intentional, get_current_user
+from app.certifications import LocalStatusWritesDisabled, RecordCourseStatusDenied, UnknownCourse, record_course_status
+from app.chain_budgets import assert_chain_budgets_within_ceiling
+from app.community_links import LinkDenied, LinkNotFound, SuggestionDenied, SuggestionNotActionable, SuggestionNotFound
+from app.community_links import auto_assign_mentors as auto_assign_mentors_service
+from app.community_links import confirm_suggested_official_link as confirm_suggested_official_link_service
+from app.community_links import create_personal_link as create_personal_link_service
+from app.community_links import delete_personal_link as delete_personal_link_service
+from app.community_links import generate_suggested_official_links as generate_suggested_official_links_service
+from app.community_links import list_community_links as list_community_links_service
+from app.community_links import list_suggested_official_links as list_suggested_official_links_service
+from app.community_links import reject_suggested_official_link as reject_suggested_official_link_service
+from app.community_links import update_personal_link as update_personal_link_service
+from app.continuity import AuthorizationRecordNotActionable, AuthorizationRecordNotFound
+from app.continuity import acknowledge_hr_review as acknowledge_hr_review_service
+from app.continuity import confirm_authorization_record as confirm_authorization_record_service
+from app.continuity import get_employee_continuity as get_employee_continuity_service
+from app.continuity import get_engagement_exposure as get_engagement_exposure_service
+from app.continuity import get_hr_review_queue as get_hr_review_queue_service
+from app.continuity import get_org_exposure as get_org_exposure_service
+from app.continuity import reject_authorization_record as reject_authorization_record_service
+from app.continuity import submit_authorization_record as submit_authorization_record_service
+from app.db import engine, get_db
+from app.demo_auth import DemoLoginDenied, DemoLoginDisabled, login as demo_login
+from app.insight_narrative import narrate as narrate_insights
+from app.doc_extraction import UnsupportedDocument, process_document, store_document
+from app.prd_extraction import extract_requirements
+from app.models import DocSubjectMatch, Employee, Office, OrgUnit, Project, TrainingCourse
+from app.models.enums import CourseStatus, SkillCategory, SkillLevel, display_status
+from app.notifications import (
+    NotifyDateMilestonesDenied, NotifyHrReviewsDenied, notifications_for, notify_date_milestones,
+    notify_upcoming_hr_reviews,
+)
+from app.org_chart import get_org_chain as get_org_chain_service
+from app.own_skills import SkillAlreadyHeld, SkillCategoryMismatch, SkillNotHeld
+from app.own_skills import add_own_skill as add_own_skill_service
+from app.own_skills import remove_own_skill as remove_own_skill_service
+from app.own_skills import update_own_skill as update_own_skill_service
+from app.people import context_people_message, resolve_context_people, resolve_skill
+from app.people import find_people as find_people_service
+from app.people import get_person as get_person_service
+from app.people import update_own_bio as update_own_bio_service
+from app.people import update_own_name_pronunciation as update_own_name_pronunciation_service
+from app.permissions import resolve_view_mode
+from app.assistant_conversations import (
+    ConversationNotFound,
+    append_turn,
+    get_most_recent_conversation,
+    load_history,
+    open_or_continue,
+)
+from app.assistant_context import facts_context_message
+from app.project_requirements import RequirementNotesNotAccessible
+from app.project_requirements import add_requirement_notes as add_requirement_notes_service
+from app.project_requirements import get_requirement_notes as get_requirement_notes_service
+from app.project_requirements import list_projects_for_picker as list_projects_for_picker_service
+from app.project_skills import ProjectNotWritable, UnknownSkill
+from app.project_skills import get_required_skills as get_required_skills_service
+from app.project_skills import set_required_skills as set_required_skills_service
+from app.proposals import (
+    DocumentAlreadyFinalized,
+    DocumentNotFound,
+    ProposalNotActionable,
+    ProposalNotFound,
+    ReviewDenied,
+    SubjectNotFound,
+)
+from app.proposals import accept as accept_proposal
+from app.proposals import bulk_accept as bulk_accept_proposals
+from app.proposals import bulk_reject as bulk_reject_proposals
+from app.proposals import correct as correct_proposal
+from app.proposals import edit as edit_proposal
+from app.proposals import finalize_document as finalize_document_service
+from app.proposals import list_documents
+from app.proposals import list_proposals
+from app.proposals import list_subjects
+from app.proposals import reassign as reassign_proposal
+from app.proposals import reject as reject_proposal
+from app.proposals import resolve_subject
+from app.proposals import undo as undo_proposal
+from app.registry import assert_registry_covers_schema
+from app.team_builder import TeamBuildUnavailable, build_team
+from app.team_finder import find_teams
+from app.workforce_reports import ReportUnavailable
+from app.workforce_reports import generate_report as generate_report_service
+from app.skill_routes import RouteDenied
+from app.skill_routes import find_routes as find_skill_routes_service
+from app.skill_routes import suggest_skills as suggest_skills_service
+from app.schemas import (
+    AskRequest,
+    DashboardOverview,
+    AuthorizationRecordOut,
+    BulkProposalRequest,
+    CommunityLinkOut,
+    ContinuityOverview,
+    CorrectProposalRequest,
+    CreateCommunityLinkRequest,
+    CreateEmployeeRequest,
+    EditProposalRequest,
+    EmployeeContinuityDetail,
+    EngagementExposure,
+    InsightReport,
+    OrgUnitOption,
+    ProjectCoverage,
+    ReminderResult,
+    SendRemindersRequest,
+    SkillDetail,
+    SkillRouteResult,
+    SkillSupplyDemand,
+    SuggestedSkill,
+    TrainingAnalytics,
+    TrainingRoster,
+    WorkforceInsight,
+    WorkforceReport,
+    MeCapabilities,
+    TeamBuildRequest,
+    TeamFindRequest,
+    TeamProposal,
+    TeamRecommendationResult,
+    WorkforceReportRequest,
+    FinalizeDocumentRequest,
+    LoginRequest,
+    HrReviewQueueItem,
+    NotificationOut,
+    OfficeOut,
+    OrgChainNode,
+    OrgUnitOut,
+    PersonDetail,
+    PersonRef,
+    PersonSummary,
+    ProjectDescriptionRequest,
+    ProjectListItem,
+    ProjectSkillRequirementIn,
+    ProjectSkillRequirementOut,
+    ReassignProposalRequest,
+    RecordCourseStatusRequest,
+    RejectActionRequestBody,
+    RequirementNoteIn,
+    RequirementNoteOut,
+    ResolveSubjectRequest,
+    SubmitAuthorizationRecordRequest,
+    SuggestedOfficialLinkOut,
+    AddOwnSkillRequest,
+    UpdateBioRequest,
+    UpdateOwnSkillRequest,
+    UpdateCommunityLinkRequest,
+    UpdateEmployeeRequest,
+    UpsertProjectHistoryRequest,
+    UpdateNamePronunciationRequest,
+)
+from app.tool_calling import PRD_PROFILE
+from app.tool_calling import answer as answer_service
+from app.unified_search import unified_search
+from app.writes import (
+    DuplicateEmail,
+    EmployeeAlreadyInactive,
+    HasActiveDirectReports,
+    NoApproverAvailable,
+    RequestNotPending,
+    WriteDenied,
+    WriteTargetMissing,
+)
+from app.writes import approve_action_request as approve_action_request_service
+from app.writes import clear_project_description as clear_project_description_service
+from app.writes import request_creation as request_creation_service, NoApproverAvailable
+from app.writes import list_deactivated_employees as list_deactivated_employees_service
+from app.writes import list_my_pending_approvals as list_pending_approvals_service
+from app.writes import reactivate_employee as reactivate_employee_service
+from app.writes import reject_action_request as reject_action_request_service
+from app.writes import request_deactivation as request_deactivation_service
+from app.writes import request_restriction as request_restriction_service
+from app.writes import set_project_description as set_project_description_service
+from app.writes import remove_project_history as remove_project_history_service
+from app.writes import update_employee as update_employee_service
+from app.writes import upsert_project_history as upsert_project_history_service
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # Fails loudly at startup if a DB column has no app/registry.py entry
+    # and isn't in IGNORED_COLUMNS -- the same protection
+    # assert_registry_covers_schema's own docstring describes: a teammate
+    # adding employee.home_address must add a registry entry (or a
+    # justified ignore) before it can ever become queryable, not after.
+    assert_registry_covers_schema(engine)
+    # Same shape: fails loudly if AUTH_MODE fell back to "dev" by omission
+    # rather than by a deliberate ALLOW_DEV_AUTH=1 / AUTH_MODE=dev choice —
+    # see assert_dev_auth_is_intentional's docstring for why that fallback
+    # is a full auth bypass, not a degraded feature.
+    assert_dev_auth_is_intentional()
+    # Same shape again: fails loudly if a plan class's declared chain
+    # budget (app/chain_budgets.py) exceeds the absolute ceiling on any
+    # axis — caught before the app ever serves a request, not the first
+    # time someone's chain runs for 20 seconds and nobody knows why.
+    assert_chain_budgets_within_ceiling()
+    yield
+
+app = FastAPI(
+    title="Employee Directory API",
+    description="Internal employee directory with permission-filtered natural-language search.",
+    version="0.1.0",
+    lifespan=_lifespan,
+)
+# Local frontend dev server only (Vite default port) — the API has no
+# cookie-based session to protect against CSRF here, auth is a header the
+# browser never attaches automatically.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+def health() -> dict:
+    try:
+        with engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+        db_status = "ok"
+    except Exception:
+        db_status = "unreachable"
+    return {"status": "ok" if db_status == "ok" else "degraded", "database": db_status}
+
+
+@app.get("/auth/whoami", response_model=AuthenticatedUser)
+def whoami(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    return user
+
+
+@app.get("/me/capabilities", response_model=MeCapabilities)
+def my_capabilities(
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> MeCapabilities:
+    """Which of the team features this caller can actually use.
+
+    Answered by running the real gate — app/analytics.py's resolve_scope,
+    the same function POST /team/build runs — rather than by re-deriving
+    the rule client-side, where it would be a second copy free to drift
+    from the first.
+
+    Purely advisory. Every endpoint enforces for itself, so a wrong answer
+    here can hide a feature that would have worked, never open one that
+    should be shut.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        resolve_scope(db, user, mode)
+        can_build = True
+    except DashboardForbidden:
+        can_build = False
+    return MeCapabilities(can_build_team=can_build, can_find_team=True)
+from pydantic import BaseModel
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+@app.post("/auth/login")
+def login_route(body: LoginRequest, db: Session = Depends(get_db)):
+    """Demo login endpoint for local testing."""
+    try:
+        return demo_login(db, body.email, body.password)
+    except DemoLoginDenied as exc:
+        raise HTTPException(status_code=401, detail="Invalid credentials") from exc
+    except DemoLoginDisabled as exc:
+        # In production (Entra auth), this route pretends it doesn't exist at all.
+        raise HTTPException(status_code=404, detail="Not Found") from exc
+
+@app.get("/people", response_model=list[PersonSummary], response_model_exclude_unset=True)
+def list_people(
+    name: str | None = Query(
+        None, description="Exact or partial person name. Keyword+prefix and fuzzy "
+                          "(misspelling-tolerant) matching via hybrid search."),
+    query: str | None = Query(
+        None, description='Free-text description of a person, e.g. "who knows Power BI '
+                          'in Bangalore". Routed through the same hybrid keyword+fuzzy+vector '
+                          "search as `name`, plus a semantic (vector) match — use this for a "
+                          "description rather than a literal name. Takes priority over `name` "
+                          "if both are given."),
+    skill: str | None = None,
+    level: str | None = None,
+    org_unit: str | None = None,
+    office: str | None = None,
+    language: str | None = None,
+    available: bool | None = None,
+    view_mode: str | None = Query(
+        None, description='Which lens to read the directory through: "work" (the '
+                          'caller\'s full privileges) or "employee" (what an ordinary '
+                          'colleague sees). Only hr and it may choose; every other role '
+                          'is answered in employee mode whatever it sends. Defaults to '
+                          '"work" for hr/it.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[PersonSummary]:
+    return find_people_service(
+        db, user, name=name, query=query, skill=skill, level=level, org_unit=org_unit,
+        office=office, language=language, available=available,
+        view_mode=resolve_view_mode(user.role, view_mode),
+    )
+
+
+@app.get("/search")
+def unified_search_route(
+    q: str | None = Query(None, description="Free-text query or natural-language question."),
+    skill: str | None = None,
+    level: str | None = None,
+    org_unit: str | None = None,
+    office: str | None = None,
+    language: str | None = None,
+    available: bool | None = None,
+    view_mode: str | None = Query(
+        None, description='"work" or "employee" — see GET /people. Applies to the '
+                          'assisted path too, so an hr/it caller in employee mode gets '
+                          'employee-mode data whether they searched or asked a question.'),
+    conversation_id: int | None = Query(
+        None, description="Continues the caller's own \"search\" conversation. Omit to open a new one "
+                          "(still returned in the response) — see AskRequest's docstring for the same rule."),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """The merged Search+Ask entry point. Deterministically decides direct
+    (structured, zero model calls) vs assisted (routed through the same
+    tool-calling layer /ask uses) — see app.unified_search for the actual
+    router. /people and /ask both stay in place unchanged underneath this;
+    nothing here duplicates their retrieval or permission logic.
+
+    An assisted-mode answer opens/continues a "search" surface conversation
+    and records this turn to it, same as POST /ask — a direct-mode answer
+    (no model call at all) has no assistant turn to record, so it never
+    touches conversation_id or gains one in its response.
+
+    No response_model here (the shape is a discriminated union, direct vs
+    assisted) — so results/citations are dumped with exclude_unset by hand
+    below, matching what response_model_exclude_unset does for /people. A
+    field like direct_reports is only ever set on a PersonSummary instance
+    for a manager/hr caller in the first place (see people.py); without
+    this, FastAPI's default dict encoding would serialize every unset
+    field as an explicit `null` instead of leaving the key genuinely
+    absent — quietly telling a non-manager caller "this field exists, you
+    just can't see it", the exact boundary-leak /people's flag exists to
+    prevent.
+    """
+    try:
+        result = unified_search(
+            db, user, q=q,
+            filters={"skill": skill, "level": level, "org_unit": org_unit,
+                     "office": office, "language": language, "available": available},
+            view_mode=resolve_view_mode(user.role, view_mode),
+            conversation_id=conversation_id,
+        )
+    except ConversationNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    result["results"] = [p.model_dump(exclude_unset=True) for p in result["results"]]
+    if result.get("overview") is not None:
+        result["overview"]["citations"] = [c.model_dump(exclude_unset=True) for c in result["overview"]["citations"]]
+    return result
+
+
+@app.get("/people/{person_id}", response_model=PersonDetail, response_model_exclude_unset=True)
+def get_person_route(
+    person_id: str,
+    view_mode: str | None = Query(
+        None, description='"work" or "employee" — see GET /people. Forced to '
+                          '"employee" for any role other than hr/it.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PersonDetail:
+    person = get_person_service(db, user, person_id, resolve_view_mode(user.role, view_mode))
+    if person is None:
+        # Identical response whether nobody matched or the caller lacks
+        # access — redact, never reject.
+        raise HTTPException(status_code=404, detail="Person not found")
+    return person
+
+
+@app.patch("/people/{person_id}/bio", response_model=PersonDetail, response_model_exclude_unset=True)
+def update_bio_route(
+    person_id: str,
+    body: UpdateBioRequest,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PersonDetail:
+    # Self-service only — editing anyone else's About, even your own
+    # direct reports', is out of scope for this endpoint.
+    if person_id != user.id:
+        raise HTTPException(status_code=403, detail="You can only edit your own profile")
+    result = update_own_bio_service(db, user, person_id, body.bio.strip())
+    if result is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return result
+
+
+@app.patch("/people/{person_id}/pronunciation", response_model=PersonDetail, response_model_exclude_unset=True)
+def update_name_pronunciation_route(
+    person_id: str,
+    body: UpdateNamePronunciationRequest,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PersonDetail:
+    # Self-service only, same reasoning as /people/{person_id}/bio above:
+    # how your own name sounds isn't something anyone else edits on your
+    # behalf, not even HR.
+    if person_id != user.id:
+        raise HTTPException(status_code=403, detail="You can only edit your own profile")
+    result = update_own_name_pronunciation_service(db, user, person_id, body.name_pronunciation.strip())
+    if result is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return result
+
+
+# --- Self-service skills and languages -------------------------------------
+# Same identity gate as /bio and /pronunciation above, and for the same
+# reason: a skill somebody claims about themselves is theirs to state, and
+# app/own_skills.py stamps every write here `self`-sourced so a reader can
+# tell a self-claim from a verified one. Not routed through
+# app.permissions' EDITABLE table — see app/own_skills.py's docstring for
+# why identity, not role, is the right gate for an own-record write.
+#
+# One endpoint family covers both cards: a language is a skills row with
+# category=language (app/own_skills.py), so the Languages card posts
+# category="language" and everything else is identical.
+#
+# All three answer with the caller's full PersonDetail rather than the row
+# that changed — including DELETE, which is why it's a 200 with a body
+# instead of the 204 DELETE /people/{id}/projects/{project_id} returns. An
+# add doesn't always land in the card that submitted it (category belongs
+# to the skill), so the response has to be able to show where it went, and
+# the caller is looking at their own profile page anyway.
+
+
+def _require_self(person_id: str, user: AuthenticatedUser) -> None:
+    if person_id != user.id:
+        raise HTTPException(status_code=403, detail="You can only edit your own profile")
+
+
+@app.post("/people/{person_id}/skills", status_code=201,
+          response_model=PersonDetail, response_model_exclude_unset=True)
+def add_own_skill_route(
+    person_id: str,
+    body: AddOwnSkillRequest,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PersonDetail:
+    """Add a skill or language to your own profile.
+
+    An unrecognised name creates it; a name matching an existing skill
+    case-insensitively (or as a known synonym) attaches to that one. 409 if
+    you already hold it — changing a level is PATCH, not a second add.
+    """
+    _require_self(person_id, user)
+    try:
+        result = add_own_skill_service(
+            db, user, person_id, body.skill.strip(),
+            SkillCategory(body.category), SkillLevel(body.level),
+        )
+    except SkillCategoryMismatch as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SkillAlreadyHeld as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"You already have {exc.args[0]} on your profile — edit its level instead.",
+        ) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return result
+
+
+@app.patch("/people/{person_id}/skills", response_model=PersonDetail, response_model_exclude_unset=True)
+def update_own_skill_route(
+    person_id: str,
+    body: UpdateOwnSkillRequest,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PersonDetail:
+    """Change the level of a skill or language already on your own profile.
+
+    The skill is named in the BODY, not the path: real skill names contain
+    slashes ("CI/CD", "Agile/Scrum"), and a percent-encoded slash is decoded
+    back into a path separator before routing ever sees it, so a
+    name-in-path endpoint would 404 on exactly those entries.
+    """
+    _require_self(person_id, user)
+    try:
+        result = update_own_skill_service(db, user, person_id, body.skill.strip(), SkillLevel(body.level))
+    except SkillNotHeld as exc:
+        raise HTTPException(status_code=404, detail=f"{exc.args[0]} isn't on your profile.") from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return result
+
+
+@app.delete("/people/{person_id}/skills", response_model=PersonDetail, response_model_exclude_unset=True)
+def remove_own_skill_route(
+    person_id: str,
+    skill: str = Query(..., min_length=1, description="Name of the skill or language to remove."),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PersonDetail:
+    """Remove a skill or language from your own profile.
+
+    Named in the query string for the same slash reason PATCH names it in
+    the body — a query value may legally contain "/" once decoded, a path
+    segment may not. Only your holding of the skill goes; the skill itself
+    stays for everyone else who has it.
+    """
+    _require_self(person_id, user)
+    try:
+        result = remove_own_skill_service(db, user, person_id, skill.strip())
+    except SkillNotHeld as exc:
+        raise HTTPException(status_code=404, detail=f"{exc.args[0]} isn't on your profile.") from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return result
+
+
+@app.patch("/employees/{person_id}", response_model=PersonDetail, response_model_exclude_unset=True)
+def update_employee_route(
+    person_id: str,
+    body: UpdateEmployeeRequest,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PersonDetail:
+    """HR, work mode: edit internal fields on any employee.
+
+    The role and view_mode gate is applied by the service against the
+    EDITABLE table, not here — this route only resolves the mode and
+    translates the service's exceptions into status codes. Calling it
+    directly with view_mode=work as an employee is refused server-side; the
+    UI hiding the form is not what stops it.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    changes = body.model_dump(exclude_unset=True)
+    try:
+        update_employee_service(db, user, person_id, changes, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WriteTargetMissing as exc:
+        raise HTTPException(status_code=404, detail="Person not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    # Re-read through the ordinary permission-filtered path, so the response
+    # shows what this caller may see rather than what they just wrote.
+    person = get_person_service(db, user, person_id, mode)
+    if person is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return person
+
+
+def _employee_action_result(employee) -> dict:
+    """Shared response shape for deactivate/reactivate/create — a plain
+    summary, not PersonDetail. update_employee_route's own re-read-through-
+    get_person pattern doesn't work here: get_person returns None for
+    is_active=False for every caller including HR (app.people.get_person's
+    own retrieval gate), which is exactly the state deactivate/reactivate
+    are transitioning through."""
+    return {
+        "id": employee.id,
+        "full_name": employee.full_name,
+        "job_title": employee.job_title,
+        "is_active": employee.is_active,
+        "availability_status": employee.availability_status.value,
+        "deactivated_at": employee.deactivated_at,
+    }
+
+
+@app.get("/org_units", response_model=list[OrgUnitOut])
+def list_org_units_route(
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[OrgUnit]:
+    """Every org unit, flat, for any authenticated caller. Not sensitive —
+    org_unit is already in BASE_FIELDS, visible on every profile regardless
+    of role — so this lists the structure itself for the create-employee
+    picker rather than gating it further than the data it's built from
+    already is. get_current_user is still the auth gate — any authenticated
+    caller, no additional role check needed beyond it."""
+    return db.query(OrgUnit).order_by(OrgUnit.name).all()
+
+
+@app.get("/offices", response_model=list[OfficeOut])
+def list_offices_route(
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[Office]:
+    """Every office. Same non-sensitivity reasoning as /org_units — office
+    is already in BASE_FIELDS."""
+    return db.query(Office).order_by(Office.name).all()
+
+
+@app.post("/employees", status_code=202)
+def create_employee_route(
+    body: CreateEmployeeRequest,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """HR, work mode: stage a new employee record creation."""
+    mode = resolve_view_mode(user.role, view_mode)
+    fields = body.model_dump(exclude_unset=True)
+    try:
+        action_request = request_creation_service(db, user, fields, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DuplicateEmail as exc:
+        raise HTTPException(status_code=409, detail=f"work_email {exc} is already in use") from exc
+    except NoApproverAvailable as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        
+    return {
+        "request_id": action_request.id,
+        "status": action_request.status.value,
+        "action_type": action_request.action_type.value,
+        "approver_id": action_request.approver_id,
+        "target_id": action_request.target_employee_id,
+        "target_name": body.full_name
+    }
+
+
+from app.writes import request_subject_name
+
+def _action_request_result(db: Session, request) -> dict:
+    approver = db.get(Employee, request.approver_id) if request.approver_id else None
+    requester = db.get(Employee, request.requested_by) if request.requested_by else None
+    
+    return {
+        "request_id": request.id,
+        "action_type": request.action_type.value,
+        "status": request.status.value,
+        "target_id": request.target_employee_id,
+        "target_name": request_subject_name(db, request),
+        "approver_id": request.approver_id,
+        "approver_name": approver.full_name if approver else None,
+        "requested_by": request.requested_by,
+        "requested_by_name": requester.full_name if requester else request.requested_by,
+        "created_at": request.created_at,
+        "resolved_at": request.resolved_at,
+        "rejection_reason": request.rejection_reason,
+    }
+
+
+@app.post("/employees/{person_id}/restrict")
+def restrict_employee_route(
+    person_id: str,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """HR, work mode: stages a restrict request — does not restrict the
+    profile. Only approve_action_request, called by the requester's own
+    resolved approver, actually applies it. See app.writes.request_restriction
+    for how the approver is chosen."""
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        request = request_restriction_service(db, user, person_id, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WriteTargetMissing as exc:
+        raise HTTPException(status_code=404, detail="Person not found") from exc
+    except NoApproverAvailable as exc:
+        raise HTTPException(
+            status_code=422, detail=f"no reachable approver in {exc}'s reporting chain") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _action_request_result(db, request)
+
+
+@app.post("/employees/{person_id}/deactivate")
+def deactivate_employee_route(
+    person_id: str,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """HR, work mode: stages a deactivate request — does not deactivate the
+    employee. Blocked (409) up front while the target still manages anyone
+    active; only approve_action_request actually flips is_active. See
+    app.writes.request_deactivation."""
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        request = request_deactivation_service(db, user, person_id, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WriteTargetMissing as exc:
+        raise HTTPException(status_code=404, detail="Person not found") from exc
+    except EmployeeAlreadyInactive as exc:
+        raise HTTPException(status_code=409, detail=f"{exc} is already inactive") from exc
+    except HasActiveDirectReports as exc:
+        raise HTTPException(status_code=409, detail={
+            "message": str(exc), "active_direct_reports": exc.reports,
+        }) from exc
+    except NoApproverAvailable as exc:
+        raise HTTPException(
+            status_code=422, detail=f"no reachable approver in {exc}'s reporting chain") from exc
+    return _action_request_result(db, request)
+
+
+@app.get("/employee_action_requests")
+def list_pending_approvals_route(
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Every pending restrict/deactivate request THIS caller is the resolved
+    approver for — identity-gated (app.writes.list_my_pending_approvals),
+    not role-gated. Whoever the requester's reporting chain names as
+    approver sees these, whatever role header they're currently using."""
+    requests = list_pending_approvals_service(db, user)
+    return {"requests": [_action_request_result(db, r) for r in requests]}
+
+
+@app.post("/employee_action_requests/{request_id}/approve")
+def approve_action_request_route(
+    request_id: int,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Only the request's own resolved approver may call this — see
+    app.writes.approve_action_request."""
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        request = approve_action_request_service(db, user, request_id, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WriteTargetMissing as exc:
+        raise HTTPException(status_code=404, detail="Request or target not found") from exc
+    except RequestNotPending as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except HasActiveDirectReports as exc:
+        raise HTTPException(status_code=409, detail={
+            "message": str(exc), "active_direct_reports": exc.reports,
+        }) from exc
+    except DuplicateEmail as exc:
+        raise HTTPException(status_code=409, detail=f"work_email {exc} is already in use") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _action_request_result(db, request)
+
+
+@app.post("/employee_action_requests/{request_id}/reject")
+def reject_action_request_route(
+    request_id: int,
+    body: RejectActionRequestBody,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Only the request's own resolved approver may call this — see
+    app.writes.reject_action_request."""
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        request = reject_action_request_service(db, user, request_id, mode, reason=body.reason)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WriteTargetMissing as exc:
+        raise HTTPException(status_code=404, detail="Request not found") from exc
+    except RequestNotPending as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _action_request_result(db, request)
+
+
+@app.get("/employees/deactivated")
+def list_deactivated_employees_route(
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """HR, work mode: the deactivated employees, newest departure first.
+
+    The only route in this app that surfaces is_active=False records —
+    every other read treats them as nonexistent, which is what left
+    /employees/{id}/reactivate unreachable without knowing an id by heart.
+    Gated by the same capability deactivating took. Static path, so no
+    collision with the /employees/{person_id}/... routes below.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        employees = list_deactivated_employees_service(db, user, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return {"employees": employees}
+
+
+@app.post("/employees/{person_id}/reactivate")
+def reactivate_employee_route(
+    person_id: str,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """HR, work mode: reverse a deactivation."""
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        employee = reactivate_employee_service(db, user, person_id, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WriteTargetMissing as exc:
+        raise HTTPException(status_code=404, detail="Person not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _employee_action_result(employee)
+
+
+@app.put("/projects/{project_id}/description")
+def set_project_description_route(
+    project_id: int,
+    body: ProjectDescriptionRequest,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """HR, work mode: add or edit a project description."""
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        project = set_project_description_service(db, user, project_id, body.description, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WriteTargetMissing as exc:
+        raise HTTPException(status_code=404, detail="Project not found") from exc
+    return {"project_id": project.id, "project_name": project.name,
+            "project_desc": project.description}
+
+
+@app.delete("/projects/{project_id}/description")
+def clear_project_description_route(
+    project_id: int,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """HR, work mode: remove a project description.
+
+    Removes the description, not the project — see app/writes.py for why
+    deleting the Project row is out of scope for a role whose editable set
+    is exactly {project_desc}.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        project = clear_project_description_service(db, user, project_id, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WriteTargetMissing as exc:
+        raise HTTPException(status_code=404, detail="Project not found") from exc
+    return {"project_id": project.id, "project_name": project.name, "project_desc": None}
+
+
+@app.put("/people/{person_id}/projects/{project_id}")
+def upsert_project_history_route(
+    person_id: str,
+    project_id: int,
+    body: UpsertProjectHistoryRequest,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """HR, work mode: add or correct anyone's project history — except
+    their own (see app/writes.py's _refuse_own_record).
+
+    PUT rather than POST/PATCH because (person_id, project_id) fully
+    identifies the membership: the same call creates it or edits it, and
+    repeating it converges on the same row rather than stacking duplicates.
+    Only the keys actually supplied are written, so this is not a
+    replace-the-whole-row PUT — `{"end_date": null}` clears the end date,
+    omitting it leaves it alone.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    changes = body.model_dump(exclude_unset=True)
+    try:
+        membership = upsert_project_history_service(
+            db, user, person_id, project_id, changes, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WriteTargetMissing as exc:
+        raise HTTPException(status_code=404, detail="Employee or project not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "employee_id": membership.employee_id,
+        "project_id": membership.project_id,
+        "role": membership.role,
+        "contribution": membership.contribution,
+        "start_date": membership.start_date.isoformat() if membership.start_date else None,
+        "end_date": membership.end_date.isoformat() if membership.end_date else None,
+    }
+
+
+@app.delete("/people/{person_id}/projects/{project_id}", status_code=204)
+def remove_project_history_route(
+    person_id: str,
+    project_id: int,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> Response:
+    """HR, work mode: remove anyone's project membership — except their own.
+
+    Removes the membership, not the project: the Project row and everyone
+    else staffed on it are untouched, same scoping reasoning as
+    DELETE /projects/{id}/description above.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        remove_project_history_service(db, user, person_id, project_id, mode)
+    except WriteDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WriteTargetMissing as exc:
+        raise HTTPException(status_code=404, detail="Project membership not found") from exc
+    return Response(status_code=204)
+
+
+@app.get("/people/{person_id}/org-chart", response_model=list[OrgChainNode])
+def get_org_chart_route(
+    person_id: str,
+    direction: Literal["up", "down"] = "up",
+    depth: int = 10,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[OrgChainNode]:
+    mode = resolve_view_mode(user.role, view_mode)
+    result = get_org_chain_service(db, user, person_id, direction, depth, view_mode=mode)
+    if result is None:
+        # Same identical-shape rule as get_person: root not visible or not
+        # found look the same. Direction access (downward, wrong role) is a
+        # different case — that's an empty list, handled inside the service.
+        raise HTTPException(status_code=404, detail="Person not found")
+    return result
+
+
+@app.get("/me/notifications", response_model=list[NotificationOut])
+def my_notifications_route(
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[NotificationOut]:
+    """Your own notifications, newest first.
+
+    Keyed on the caller's id with no person_id parameter at all — there is
+    deliberately no route shape that could read someone else's inbox, for
+    any role. An hr caller reading a manager's course reports would be a
+    second, unaudited way to learn who failed what.
+    """
+    out: list[NotificationOut] = []
+    for n in notifications_for(db, user.id):
+        subject = db.get(Employee, n.subject_employee_id)
+        course = db.get(TrainingCourse, n.course_id)
+        out.append(NotificationOut(
+            id=n.id, kind=n.kind.value,
+            subject_person=PersonRef(
+                id=n.subject_employee_id,
+                full_name=subject.full_name if subject else "",
+            ),
+            course_name=course.name if course else "",
+            display_status=n.display_status, body=n.body,
+            levels_up=n.levels_up, created_at=n.created_at,
+        ))
+    return out
+
+
+@app.post("/people/{person_id}/training/{course_code}", status_code=201)
+def record_training_status_route(
+    person_id: str,
+    course_code: str,
+    body: RecordCourseStatusRequest,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    mode = resolve_view_mode(user.role, view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(status_code=403, detail="Recording course status is an HR action in work mode")
+    """Record a course status change and fire both notification triggers.
+
+    Stands in for the training system telling us something happened, which
+    is the event neither provider can invent — it's what makes the triggers
+    demoable while ENABLE_TRAINING_API_SYNC is off. When the push-vs-pull
+    question is settled with the other team, their webhook handler calls the
+    same service function; this route stays as the manual/backfill path.
+
+    hr-only: it is the one inbound surface that speaks the four-value status,
+    and an employee marking their own course completed would make the whole
+    pipeline decorative. 409 once real sync is on — see
+    LocalStatusWritesDisabled.
+    """
+    if user.role != "hr":
+        raise HTTPException(status_code=403, detail="Recording course status is an HR action")
+
+    employee = db.get(Employee, person_id)
+    if employee is None or not employee.is_active:
+        raise HTTPException(status_code=404, detail="Person not found")
+
+    try:
+        row, notifications = record_course_status(
+            db, caller=user, employee=employee, course_code=course_code,
+            status=CourseStatus(body.status),
+            attempted_on=body.attempted_on, completed_on=body.completed_on,
+        )
+    except LocalStatusWritesDisabled as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except UnknownCourse as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RecordCourseStatusDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    # The four-value status echoes back here — this endpoint's caller is hr
+    # and already sent it. It stays out of every profile response.
+    return {
+        "employee_id": row.employee_id,
+        "course_code": course_code,
+        "status": row.status.value,
+        "display_status": display_status(row.status).value,
+        "notifications_sent": len(notifications),
+    }
+
+
+@app.post("/notifications/date-milestones", status_code=201)
+def run_date_milestones_route(
+    on: date | None = Query(None, description="Date to sweep, YYYY-MM-DD. Defaults to today."),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    mode = resolve_view_mode(user.role, view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(status_code=403, detail="Running the date sweep is an HR action in work mode")
+    """Sweep for birthdays and milestone service anniversaries, notifying HR.
+
+    A sweep rather than an event: nothing changes in the database on
+    someone's birthday, so something has to come looking. This project has no
+    scheduler, so this route is what a daily cron or Azure timer would call —
+    the logic lives in app/notifications.py and doesn't care what invoked it.
+
+    Idempotent, so a retried cron or a doubled-up timer can't produce a second
+    birthday message; re-running for the same date returns `notifications_sent:
+    0`. `on` exists so a past or future date can be swept deliberately, which
+    is also the only way to demo it without waiting for a real birthday.
+
+    hr-only: it writes notifications to HR's own inboxes on everyone's behalf.
+    """
+    if user.role != "hr":
+        raise HTTPException(status_code=403, detail="Running the date sweep is an HR action")
+
+    on_date = on or date.today()
+    try:
+        created = notify_date_milestones(db, user, on_date)
+    except NotifyDateMilestonesDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    db.commit()
+
+    by_kind: dict[str, int] = {}
+    for n in created:
+        by_kind[n.kind.value] = by_kind.get(n.kind.value, 0) + 1
+    return {
+        "date": on_date.isoformat(),
+        "notifications_sent": len(created),
+        "by_kind": by_kind,
+    }
+
+
+@app.post("/notifications/hr-review-reminders", status_code=201)
+def run_hr_review_reminders_route(
+    on: date | None = Query(None, description="Date to sweep, YYYY-MM-DD. Defaults to today."),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    mode = resolve_view_mode(user.role, view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(status_code=403, detail="Running the HR-review sweep is an HR action in work mode")
+    """Sweep for work-authorization reviews due soon, notifying HR.
+
+    Same shape as POST /notifications/date-milestones — a sweep, not an
+    event, for the same reason (nothing changes in the database when a
+    review date approaches). Only ever reminds about a record HR hasn't
+    silenced via POST /continuity/review-queue/{record_id}/acknowledge —
+    see app.notifications.notify_upcoming_hr_reviews. HR-only.
+    """
+    if user.role != "hr":
+        raise HTTPException(status_code=403, detail="Running the HR-review sweep is an HR action")
+
+    on_date = on or date.today()
+    try:
+        created = notify_upcoming_hr_reviews(db, user, on_date)
+    except NotifyHrReviewsDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    db.commit()
+
+    return {
+        "date": on_date.isoformat(),
+        "notifications_sent": len(created),
+    }
+
+
+@app.get("/projects/{project_id}/required-skills", response_model=list[ProjectSkillRequirementOut])
+def get_required_skills_route(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[ProjectSkillRequirementOut]:
+    """What a project's delivery actually needs, per app/project_skills.py.
+    Not sensitive — visible to anyone who can see the project at all
+    (confidential projects: members and hr only, same 404-not-403 shape
+    used everywhere else for restricted records)."""
+    result = get_required_skills_service(db, user, project_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return result
+
+
+@app.put("/projects/{project_id}/required-skills", response_model=list[ProjectSkillRequirementOut])
+def set_required_skills_route(
+    project_id: int,
+    body: list[ProjectSkillRequirementIn],
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[ProjectSkillRequirementOut]:
+    """Replaces the full required-skills set for this project. Only the
+    project's owner or hr may call this — app/project_skills.py's own
+    check, enforced there rather than only here."""
+    try:
+        result = set_required_skills_service(db, user, project_id, body)
+    except ProjectNotWritable as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except UnknownSkill as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return result
+
+
+@app.get("/projects", response_model=list[ProjectListItem])
+def list_projects_route(
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[ProjectListItem]:
+    """The PRD page's project picker. HR + work mode only — this listing
+    exists for the PRD feature specifically, not as a general project
+    browser open to every role."""
+    mode = resolve_view_mode(user.role, view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(status_code=403, detail="Listing projects for PRD upload is an HR action in work mode")
+    return list_projects_for_picker_service(db, user, mode)
+
+
+@app.get("/projects/{project_id}/requirement-notes", response_model=list[RequirementNoteOut])
+def get_requirement_notes_route(
+    project_id: int,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[RequirementNoteOut]:
+    """Qualitative requirements recorded against a project — HR-or-owner
+    only, unlike GET .../required-skills, which stays open to anyone who
+    can see the project. Notes are sentences lifted verbatim from a
+    planning document; skills are structured org facts. See
+    app/project_requirements.py's module docstring for why that asymmetry
+    is deliberate, not an oversight."""
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        result = get_requirement_notes_service(db, user, project_id, mode)
+    except RequirementNotesNotAccessible as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return result
+
+
+@app.post("/projects/{project_id}/requirement-notes", response_model=list[RequirementNoteOut])
+def add_requirement_notes_route(
+    project_id: int,
+    body: list[RequirementNoteIn],
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[RequirementNoteOut]:
+    """Appends requirement notes — unlike PUT .../required-skills, never
+    replaces the existing set: a second PRD upload confirming new notes
+    must not erase one recorded months ago. Same HR-or-owner gate as the
+    read route above."""
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        result = add_requirement_notes_service(db, user, project_id, body, mode)
+    except RequirementNotesNotAccessible as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return result
+
+
+def _require_continuity_access(user: AuthenticatedUser, view_mode: str | None) -> str:
+    mode = resolve_view_mode(user.role, view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(status_code=403, detail="Continuity data is an HR-only view")
+    return mode
+@app.get("/continuity/exposure", response_model=ContinuityOverview)
+def continuity_exposure_route(
+    window_days: int | None = Query(None, description="Lookahead window in days. Defaults to the configured value."),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ContinuityOverview:
+    _require_continuity_access(user, view_mode)
+    return get_org_exposure_service(db, user, window_days=window_days)
+
+@app.get("/continuity/engagement-exposure", response_model=list[EngagementExposure])
+def continuity_engagement_exposure_route(
+    exposure: str | None = None,
+    client: str | None = None,
+    project: str | None = None,
+    office: str | None = None,
+    org_unit: str | None = None,
+    dependency_type: str | None = None,
+    window_days: int | None = Query(None),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[EngagementExposure]:
+    _require_continuity_access(user, view_mode)
+    return get_engagement_exposure_service(
+        db, user, exposure=exposure, client=client, project=project,
+        office=office, org_unit=org_unit, dependency_type=dependency_type, window_days=window_days,
+    )
+
+@app.get("/continuity/review-queue", response_model=list[HrReviewQueueItem])
+def continuity_review_queue_route(
+    authorization_type: str | None = None,
+    exposure: str | None = None,
+    next_review_from: date | None = None,
+    next_review_to: date | None = None,
+    engagements_min: int | None = None,
+    engagements_max: int | None = None,
+    window_days: int | None = Query(None),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[HrReviewQueueItem]:
+    _require_continuity_access(user, view_mode)
+    return get_hr_review_queue_service(
+        db, user, window_days=window_days, authorization_type=authorization_type, exposure=exposure,
+        next_review_from=next_review_from, next_review_to=next_review_to,
+        engagements_min=engagements_min, engagements_max=engagements_max,
+    )
+
+@app.get("/continuity/employees/{employee_id}", response_model=EmployeeContinuityDetail)
+def continuity_employee_route(
+    employee_id: str,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> EmployeeContinuityDetail:
+    _require_continuity_access(user, view_mode)
+    result = get_employee_continuity_service(db, user, employee_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return result
+
+
+@app.post(
+    "/continuity/employees/{employee_id}/authorization-records", status_code=201,
+    response_model=AuthorizationRecordOut,
+)
+def submit_authorization_record_route(
+    employee_id: str,
+    body: SubmitAuthorizationRecordRequest,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthorizationRecordOut:
+    """Enter a new work-authorization record as pending_verification. It has
+    no effect on continuity analysis or the HR review queue until POST
+    .../confirm verifies it — see app/continuity.py's write-path section.
+    HR in work mode only."""
+    mode = _require_continuity_access(user, view_mode)
+    try:
+        return submit_authorization_record_service(
+            db, user, employee_id, authorization_type=body.authorization_type,
+            effective_from=body.effective_from, effective_until=body.effective_until,
+            next_hr_review_date=body.next_hr_review_date,
+            source_document_type=body.source_document_type, internal_notes=body.internal_notes,
+            view_mode=mode,
+        )
+    except AuthorizationRecordNotFound as exc:
+        raise HTTPException(status_code=404, detail="Person not found") from exc
+
+
+@app.post(
+    "/continuity/authorization-records/{record_id}/confirm", response_model=AuthorizationRecordOut,
+)
+def confirm_authorization_record_route(
+    record_id: int,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthorizationRecordOut:
+    """The verification gate: makes a pending record current, superseding
+    whichever record was current before it. HR in work mode only."""
+    mode = _require_continuity_access(user, view_mode)
+    try:
+        return confirm_authorization_record_service(db, user, record_id, view_mode=mode)
+    except AuthorizationRecordNotFound as exc:
+        raise HTTPException(status_code=404, detail="Authorization record not found") from exc
+    except AuthorizationRecordNotActionable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/continuity/authorization-records/{record_id}/reject", response_model=AuthorizationRecordOut,
+)
+def reject_authorization_record_route(
+    record_id: int,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthorizationRecordOut:
+    """Reject a pending submission. Kept, not deleted — see
+    app.continuity.reject_authorization_record. HR in work mode only."""
+    mode = _require_continuity_access(user, view_mode)
+    try:
+        return reject_authorization_record_service(db, user, record_id, view_mode=mode)
+    except AuthorizationRecordNotFound as exc:
+        raise HTTPException(status_code=404, detail="Authorization record not found") from exc
+    except AuthorizationRecordNotActionable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/continuity/review-queue/{record_id}/acknowledge", response_model=AuthorizationRecordOut,
+)
+def acknowledge_hr_review_route(
+    record_id: int,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthorizationRecordOut:
+    """Silence the upcoming-review reminder for this record's current due
+    date. Lighter than POST .../confirm: it never changes
+    next_hr_review_date, verification_status, or is_current, and the record
+    keeps appearing in GET /continuity/review-queue regardless — this only
+    stops app/notifications.py's sweep from nagging about it. HR in work
+    mode only."""
+    mode = _require_continuity_access(user, view_mode)
+    try:
+        return acknowledge_hr_review_service(db, user, record_id, view_mode=mode)
+    except AuthorizationRecordNotFound as exc:
+        raise HTTPException(status_code=404, detail="Authorization record not found") from exc
+    except AuthorizationRecordNotActionable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/analytics/report", response_model=WorkforceReport)
+def workforce_report_route(
+    body: WorkforceReportRequest,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> WorkforceReport:
+    """Answer a natural-language workforce question as a structured,
+    evidence-backed report.
+
+    Same gate as every other dashboard endpoint, and for the same reason:
+    scope is resolved from the CALLER by app/analytics.py's resolve_scope
+    before the planner, the model, or any data is touched. HR in work mode
+    reports on the organization; a manager reports on their own reporting
+    line and cannot phrase a question that widens it — the plan the model
+    produces has no scope field for one to land in.
+
+    The model chooses which analyses to run and writes the executive
+    summary. It never queries anything, never sees an employee row, and
+    every numeral it writes is checked back against the computed findings;
+    `narrative_source` says whether the prose survived that check or fell
+    back to the deterministic version.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        return generate_report_service(db, user, body.query, mode)
+    except ReportUnavailable as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# AI Team Builder — propose a project team from a natural-language brief.
+#
+# Sits on the same gate as every other dashboard route. The ordering inside
+# app/team_builder.py's build_team is the security property: resolve_scope
+# runs on the CALLER before the brief reaches the planner, and the candidate
+# pool is built from that scope alone.
+# ---------------------------------------------------------------------------
+
+@app.post("/team/build", response_model=TeamProposal)
+def build_team_route(
+    body: TeamBuildRequest,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> TeamProposal:
+    """Turn a project brief into a proposed team, drawn only from people the
+    caller is already authorized to see.
+
+    The model converts the brief into roles and required skills. It does not
+    choose people, does not score them, and produces no statistic: every
+    percentage in the response is computed in app/team_builder.py from
+    database rows. The plan it returns has no scope field, so a brief cannot
+    widen the candidate pool however it is phrased — HR in work mode builds
+    from the organization, a manager builds from their reporting line, and
+    `scope` in the response says which.
+
+    Stateless. `assignments` is how Replace works: re-post the same brief
+    with {role_index: employee_id} and coverage, gaps and concentration
+    risks are all recalculated against the substituted team.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        return build_team(
+            db, user, body.brief, mode,
+            constraints_text=body.constraints,
+            assignments=body.assignments,
+            plan_input=body.plan,
+        )
+    except TeamBuildUnavailable as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Find the Right Team — which EXISTING team to go and ask.
+#
+# A different question from POST /team/build, and so a different gate. This
+# route ranks org units behind is_record_visible, the employee-discovery
+# rule that /search and the find_experts tool already aggregate behind for
+# every caller. resolve_scope is deliberately NOT used: it confines a
+# manager to their own reporting line, which would make "which other team
+# should I talk to" answerable only with "one of yours".
+# ---------------------------------------------------------------------------
+
+@app.post("/team/find", response_model=TeamRecommendationResult)
+def find_team_route(
+    body: TeamFindRequest,
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> TeamRecommendationResult:
+    """Rank existing teams and departments for a technical question.
+
+    Creates nothing and changes nothing. The model turns the question into
+    skills and does no more than that — it never sees an employee row, never
+    picks a unit, and produces no statistic. Every count comes from
+    employees this caller is permitted to discover, filtered before any
+    aggregation, so a headcount cannot disclose somebody they cannot see.
+
+    Contact details are the unit head's name, title and work_email, all
+    universally-visible BASE_FIELDS.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    return find_teams(db, user, body.query, mode)
+
+
+# ---------------------------------------------------------------------------
+# Skill bridges — the shortest introduction chain to a skill you lack.
+#
+# Answers a PATH question ("how do I reach someone who knows X"), which is
+# the one thing about skills here that a filter genuinely cannot do. Built
+# only from BASE_FIELDS, so a route discloses nothing the caller could not
+# look up one profile at a time — see app/skill_routes.py for why the
+# reporting line is deliberately not traversed.
+# ---------------------------------------------------------------------------
+
+@app.get("/people/{person_id}/skill-routes", response_model=SkillRouteResult)
+def skill_routes_route(
+    person_id: str,
+    skill: str = Query(..., description="Skill name. Synonyms resolve to the canonical skill."),
+    max_hops: int = Query(3, ge=1, le=4),
+    limit: int = Query(3, ge=1, le=10),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> SkillRouteResult:
+    """Shortest chains from this person to somebody capable in `skill`.
+
+    Yours to ask about yourself; HR in work mode may ask on anyone's behalf.
+    An unresolvable skill name comes back with `skill: null` rather than an
+    empty route list, which would read as "nobody has it"."""
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        return find_skill_routes_service(
+            db, user, person_id, skill, mode, max_hops=max_hops, limit=limit,
+        )
+    except RouteDenied as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/people/{person_id}/skill-suggestions", response_model=list[SuggestedSkill])
+def skill_suggestions_route(
+    person_id: str,
+    limit: int = Query(6, ge=1, le=20),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[SuggestedSkill]:
+    """Skills worth asking about — drawn from what this person's own current
+    projects require and from what the directory is thin on, each with the
+    reason it was suggested."""
+    mode = resolve_view_mode(user.role, view_mode)
+    try:
+        return suggest_skills_service(db, user, person_id, mode, limit=limit)
+    except RouteDenied as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Dashboards — HR (organization-wide) and manager (own reporting line).
+#
+# Eight endpoints, one gate. Every one of them takes the same optional
+# org_unit_id / manager_id pair and hands it straight to
+# app.analytics.resolve_scope, which is where the decision actually
+# happens: HR chooses freely, everybody else is pinned to their own
+# reporting subtree whatever they asked for, and a caller with no reports
+# gets nothing.
+#
+# Note what these routes deliberately do NOT do: they don't check the role
+# themselves. Continuity's routes re-check HR because the service raises a
+# plain exception and the route owes the client an HTTP status — the same
+# reason applies here, and _dashboard_scope_error below is that translation
+# and only that. The authorization itself is single-sourced in the service,
+# because a route-layer check that has to be remembered eight times is a
+# route-layer check that eventually isn't.
+# ---------------------------------------------------------------------------
+
+def _dashboard_view_mode(user: AuthenticatedUser, view_mode: str | None) -> ViewMode:
+    """Resolve the requested mode through the server's own rules, same as
+    everywhere else: an unrecognised value narrows the lens rather than
+    rejecting the request, so a malformed `?view_mode=` can only close a
+    view, never open one."""
+    return resolve_view_mode(user.role, view_mode)
+
+
+@app.get("/analytics/org-units", response_model=list[OrgUnitOption])
+def analytics_org_units_route(
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[OrgUnitOption]:
+    """The department selector's contents, with the headcount each option
+    resolves to. Narrowed to the caller's own scope: a manager is offered
+    only the units their own people sit in, never the company tree."""
+    try:
+        return org_unit_options_service(db, user, _dashboard_view_mode(user, view_mode))
+    except DashboardForbidden as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/analytics/overview", response_model=DashboardOverview)
+def analytics_overview_route(
+    org_unit_id: int | None = Query(None, description="Scope to this unit and everything under it. HR only; ignored for other callers."),
+    manager_id: str | None = Query(None, description="Scope to this person's reporting line. HR only; ignored for other callers."),
+    due_soon_days: int = Query(30, ge=1, le=365, description="Lookahead for the training 'due soon' bucket."),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> DashboardOverview:
+    """Headline figures for the scope: headcount, structure, projects,
+    skill health and course compliance."""
+    try:
+        return dashboard_overview_service(
+            db, user, _dashboard_view_mode(user, view_mode),
+            org_unit_id=org_unit_id, manager_id=manager_id, due_soon_days=due_soon_days,
+        )
+    except DashboardForbidden as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/analytics/skills", response_model=list[SkillSupplyDemand])
+def analytics_skills_route(
+    org_unit_id: int | None = Query(None),
+    manager_id: str | None = Query(None),
+    verdict: str | None = Query(None, description='Filter: "understaffed", "healthy", "overrepresented" or "unused".'),
+    limit: int | None = Query(None, ge=1, le=500),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[SkillSupplyDemand]:
+    """Skill supply (people in scope) against demand (active projects in
+    scope depending on it), with a verdict per skill. `demand_basis` says
+    whether the demand figure came from recorded project requirements or
+    was inferred from what assigned people happen to know."""
+    try:
+        return skill_supply_demand_service(
+            db, user, _dashboard_view_mode(user, view_mode),
+            org_unit_id=org_unit_id, manager_id=manager_id, verdict=verdict, limit=limit,
+        )
+    except DashboardForbidden as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/analytics/skills/{skill_id}", response_model=SkillDetail)
+def analytics_skill_detail_route(
+    skill_id: int,
+    org_unit_id: int | None = Query(None),
+    manager_id: str | None = Query(None),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> SkillDetail:
+    """One skill in depth — the chart's click-through. 404s for a skill
+    nobody in scope holds and no project in scope needs, rather than
+    returning an all-zeros card that looks like a measurement."""
+    try:
+        result = skill_detail_service(
+            db, user, skill_id, _dashboard_view_mode(user, view_mode),
+            org_unit_id=org_unit_id, manager_id=manager_id,
+        )
+    except DashboardForbidden as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    if result is None:
+        raise HTTPException(status_code=404, detail="No such skill in this scope")
+    return result
+
+
+@app.get("/analytics/training", response_model=TrainingAnalytics)
+def analytics_training_route(
+    org_unit_id: int | None = Query(None),
+    manager_id: str | None = Query(None),
+    course: str | None = Query(None, description="Course code, e.g. SEC-101."),
+    due_soon_days: int = Query(30, ge=1, le=365),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> TrainingAnalytics:
+    """Course compliance for the scope, split completed / overdue / due
+    soon / outstanding, and broken down by course and by department."""
+    try:
+        return training_analytics_service(
+            db, user, _dashboard_view_mode(user, view_mode),
+            org_unit_id=org_unit_id, manager_id=manager_id, course_code=course,
+            due_soon_days=due_soon_days,
+        )
+    except DashboardForbidden as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/analytics/training/roster", response_model=TrainingRoster)
+def analytics_training_roster_route(
+    org_unit_id: int | None = Query(None),
+    manager_id: str | None = Query(None),
+    bucket: str | None = Query(None, description='"completed", "overdue", "due_soon", "outstanding", or "incomplete" for all three non-completed buckets.'),
+    course: str | None = Query(None, description="Course code, e.g. SEC-101."),
+    due_soon_days: int = Query(30, ge=1, le=365),
+    limit: int = Query(500, ge=1, le=1000),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> TrainingRoster:
+    """The named people behind a bucket — the drill-down, and the list
+    reminders are selected from. Reports the two-value display status only;
+    the underlying not_started / in_progress / failed distinction is not
+    management-facing data."""
+    try:
+        return training_roster_service(
+            db, user, _dashboard_view_mode(user, view_mode),
+            org_unit_id=org_unit_id, manager_id=manager_id, bucket=bucket,
+            course_code=course, due_soon_days=due_soon_days, limit=limit,
+        )
+    except DashboardForbidden as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.post("/analytics/training/reminders", response_model=ReminderResult)
+def analytics_send_reminders_route(
+    body: SendRemindersRequest,
+    org_unit_id: int | None = Query(None),
+    manager_id: str | None = Query(None),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ReminderResult:
+    """Nudge the selected people about their outstanding courses.
+
+    Employee ids outside the caller's resolved scope are dropped and
+    counted, not rejected — so a stale selection can never reach further
+    than the dashboard that produced it. The response reports what actually
+    went out, which is not necessarily one per id: completed courses are
+    never reminded about and a same-day duplicate is suppressed.
+    """
+    try:
+        return send_reminders_service(
+            db, user, _dashboard_view_mode(user, view_mode),
+            employee_ids=body.employee_ids, course_code=body.course_code,
+            org_unit_id=org_unit_id, manager_id=manager_id,
+        )
+    except DashboardForbidden as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/analytics/projects", response_model=list[ProjectCoverage])
+def analytics_project_coverage_route(
+    org_unit_id: int | None = Query(None),
+    manager_id: str | None = Query(None),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[ProjectCoverage]:
+    """Active projects in scope, and whether their DECLARED required skills
+    are met by their current members. Projects with no recorded
+    requirements come back with requirements_recorded=False and no verdict
+    — inferring a project's needs from its members and then checking its
+    members against them would report full coverage everywhere."""
+    try:
+        return project_coverage_service(
+            db, user, _dashboard_view_mode(user, view_mode),
+            org_unit_id=org_unit_id, manager_id=manager_id,
+        )
+    except DashboardForbidden as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/analytics/insights", response_model=InsightReport)
+def analytics_insights_route(
+    org_unit_id: int | None = Query(None),
+    manager_id: str | None = Query(None),
+    due_soon_days: int = Query(30, ge=1, le=365),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> InsightReport:
+    """Risk and development signals for the scope, plus a short narrative
+    over them.
+
+    The FINDINGS are rule-derived and deterministic — see app/analytics.py's
+    `insights`, which never calls a model and states the counts behind every
+    claim. The SUMMARY is the one place a model touches this feature, and it
+    only ever orders and connects findings that are already computed: it
+    sees no employee rows, and every numeral it writes is checked back
+    against the findings before the text is accepted (app/insight_narrative.py).
+    `summary.source` says whether the prose came from the model or from the
+    deterministic template that runs when it can't or shouldn't.
+    """
+    try:
+        found = insights_service(
+            db, user, _dashboard_view_mode(user, view_mode),
+            org_unit_id=org_unit_id, manager_id=manager_id, due_soon_days=due_soon_days,
+        )
+        # The narrative needs the scope's label and headcount to write a
+        # sentence. Resolved through the same gate the findings went
+        # through, so the prose can never describe a different scope than
+        # the cards under it.
+        scope = dashboard_scope_service(
+            db, user, _dashboard_view_mode(user, view_mode),
+            org_unit_id=org_unit_id, manager_id=manager_id,
+        )
+    except DashboardForbidden as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    return InsightReport(summary=narrate_insights(found, scope), insights=found)
+
+
+# ---------------------------------------------------------------------------
+# Doc upload -> AI extraction -> HR review.
+# ---------------------------------------------------------------------------
+
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+async def _read_upload_capped(file: UploadFile) -> bytes:
+    """Read an UploadFile in chunks, aborting once config.max_upload_bytes()
+    is exceeded.
+
+    Reads via file.read() unbounded pull the whole body into memory before
+    anything can check its size — for a request-triggered parse path
+    (python-docx unzips the whole file, pypdf walks every page), an
+    oversized or crafted upload turns straight into a memory/CPU hit in the
+    request thread. Chunking keeps the checked total bounded regardless of
+    what the client claims in Content-Length.
+    """
+    limit = config.max_upload_bytes()
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(_UPLOAD_CHUNK_BYTES)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File exceeds the {limit // (1024 * 1024)} MB upload limit",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@app.post("/docs/upload", status_code=201)
+async def upload_doc_route(
+    file: UploadFile = File(..., description="A .docx or .pdf status document."),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Upload a document, parse it, and queue what it says for review.
+
+    HR-only in work mode, same gate as the review endpoints — uploading is
+    the first step of the review workflow, not a separate capability.
+
+    Nothing here reaches EmployeeProject or EmployeeSkill: the response is a
+    count of *pending* rows, every one of which needs an explicit accept.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(
+            status_code=403, detail="Uploading documents for extraction is an HR action in work mode")
+
+    data = await _read_upload_capped(file)
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty file")
+
+    try:
+        doc = store_document(db, user, file.filename or "", file.content_type, data)
+    except UnsupportedDocument as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+
+    doc_type, proposals = process_document(db, user, doc)
+    people_mentioned = (
+        db.query(DocSubjectMatch).filter(DocSubjectMatch.source_doc_id == doc.id).count()
+    )
+    return {
+        "doc_id": doc.id,
+        "filename": doc.filename,
+        "characters_extracted": len(doc.extracted_text),
+        "doc_type": doc_type.value,
+        "people_mentioned": people_mentioned,
+        "proposed_changes": len(proposals),
+        "status": "pending",
+    }
+
+
+@app.post("/projects/{project_id}/prd", status_code=201)
+async def upload_prd_route(
+    project_id: int,
+    file: UploadFile = File(..., description="A .docx or .pdf requirements document."),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Upload a PRD for a project, parse it, and return a PREVIEW of
+    extracted skill requirements and notes. Nothing is saved yet — the
+    caller reviews (and may edit) the preview, then confirms it via
+    PUT /projects/{id}/required-skills and POST /projects/{id}/requirement-notes,
+    the same routes a hand-authored requirement already goes through.
+
+    HR + work mode only, same inline gate as POST /docs/upload — this is a
+    structurally separate pipeline (app/prd_extraction.py, not
+    app/doc_extraction.py's classify/person-disambiguation flow), since a
+    PRD names no person to disambiguate, only what a project needs.
+
+    A proposed skill that doesn't resolve against the vocabulary comes back
+    under `new_skills`, not `skills` — same shape, but confirming it means
+    PUT .../required-skills will create that Skill row (create_if_missing),
+    not just attach an existing one. Split out rather than folded into
+    `skills` so the frontend can show HR which rows are "attach" and which
+    are "create," and rather than silently dropped or turned into a note
+    so a real, human-reviewed decision to add it to the catalog is still
+    available — see app.proposals._commit_skill for the identical
+    create-by-name precedent on the resume/status-report review pipeline.
+    """
+    mode = resolve_view_mode(user.role, view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(status_code=403, detail="Uploading a PRD is an HR action in work mode")
+
+    if db.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    data = await _read_upload_capped(file)
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty file")
+
+    try:
+        doc = store_document(db, user, file.filename or "", file.content_type, data, project_id=project_id)
+    except UnsupportedDocument as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+
+    result = extract_requirements(doc.extracted_text)
+    # Extraction (mock or real) reads the document, not this system's skill
+    # vocabulary -- it can propose a name ("communication", "strategy")
+    # that PUT /projects/{id}/required-skills' own resolve_skill() will
+    # never recognize on its own, since required-skills is deliberately a
+    # controlled vocabulary (see app/project_skills.py's UnknownSkill), not
+    # free text. Checked here, once, so HR sees which rows already exist in
+    # the catalog and which would be new before confirming either way.
+    skills: list[dict] = []
+    new_skills: list[dict] = []
+    for s in result.skills:
+        target = skills if resolve_skill(db, s.skill) is not None else new_skills
+        target.append({"skill": s.skill, "minimum_level": s.minimum_level, "confidence": s.confidence})
+    return {
+        "doc_id": doc.id,
+        "filename": doc.filename,
+        "skills": skills,
+        "new_skills": new_skills,
+        "notes": [{"note": n.note, "confidence": n.confidence} for n in result.notes],
+    }
+
+
+@app.get("/uploaded_docs")
+def list_documents_route(
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Every uploaded document, newest first — the review screen's index of
+    what's awaiting a decision (pending_count, unresolved_subject_count)
+    versus what's already been finalized (content_scrubbed_at set).
+
+    Named /uploaded_docs, not the more obvious /docs — FastAPI's own
+    interactive API documentation is already mounted at GET /docs
+    (docs_url, the default), and a second route on the identical path
+    would either shadow it or be shadowed by it depending on registration
+    order. /docs/upload and /docs/{id}/finalize don't collide (FastAPI's
+    reservation is the exact bare path), only a bare GET /docs would.
+    """
+    try:
+        documents = list_documents(db, user, resolve_view_mode(user.role, view_mode))
+    except ReviewDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return {"documents": documents}
+
+
+@app.get("/doc_subject_matches")
+def list_doc_subject_matches_route(
+    doc_id: int | None = Query(None, description="Restrict to one uploaded document."),
+    status: str | None = Query(None, description="unresolved | resolved | new_hire_candidate"),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """The required first screen: every person a document mentions, with
+    ranked candidate employees for each. Unresolved rows sort first."""
+    try:
+        subjects = list_subjects(
+            db, user, resolve_view_mode(user.role, view_mode), doc_id=doc_id, status=status)
+    except ReviewDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"unknown status: {status}") from exc
+    return {"doc_id": doc_id, "subjects": subjects}
+
+
+@app.post("/doc_subject_matches/{subject_id}/resolve")
+def resolve_doc_subject_match_route(
+    subject_id: int,
+    body: ResolveSubjectRequest,
+    view_mode: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Confirm who a mentioned person is (employee_id), or flag them for HR
+    to create first (new_hire). Only after this does that person's
+    proposed_changes rows become visible in GET /proposed_changes."""
+    try:
+        subject = resolve_subject(
+            db, user, subject_id, resolve_view_mode(user.role, view_mode),
+            employee_id=body.employee_id, new_hire=body.new_hire)
+    except ReviewDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except SubjectNotFound as exc:
+        raise HTTPException(status_code=404, detail="doc_subject_match not found") from exc
+    except ProposalNotActionable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "id": subject.id,
+        "extracted_name": subject.extracted_name,
+        "resolution_status": subject.resolution_status.value,
+        "resolved_employee_id": subject.resolved_employee_id,
+        "resolved_by": subject.resolved_by,
+        "resolved_at": subject.resolved_at,
+    }
+
+
+@app.get("/proposed_changes")
+def list_proposed_changes_route(
+    doc_id: int | None = Query(None, description="Restrict to one uploaded document."),
+    employee_id: str | None = Query(None, description="Restrict to one employee."),
+    status: str | None = Query(None, description="pending | accepted | edited | rejected"),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """The review queue, grouped by employee. Only rows whose
+    doc_subject_match has been resolved ever appear here — an unresolved
+    person's proposals live in GET /doc_subject_matches instead."""
+    try:
+        groups = list_proposals(
+            db, user, resolve_view_mode(user.role, view_mode),
+            doc_id=doc_id, employee_id=employee_id, status=status)
+    except ReviewDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"unknown status: {status}") from exc
+    return {"doc_id": doc_id, "groups": groups}
+
+
+@app.post("/proposed_changes/{proposal_id}/accept")
+def accept_proposed_change_route(
+    proposal_id: int,
+    view_mode: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Commit one proposed change to the real tables, re-index, and audit it
+    with source=ai_extraction. One of only two paths by which extracted
+    content becomes searchable (the other is /edit)."""
+    return _review_action(
+        accept_proposal, db, user, proposal_id, resolve_view_mode(user.role, view_mode))
+
+
+@app.post("/proposed_changes/{proposal_id}/edit")
+def edit_proposed_change_route(
+    proposal_id: int,
+    body: EditProposalRequest,
+    view_mode: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Commit the reviewer's own value — not the raw AI output. Status
+    lands as `edited`, distinct from `accept`'s `accepted`, so extraction
+    quality stays measurable."""
+    return _review_action(
+        edit_proposal, db, user, proposal_id, resolve_view_mode(user.role, view_mode),
+        edited_value=body.edited_value)
+
+
+@app.post("/proposed_changes/{proposal_id}/reassign")
+def reassign_proposed_change_route(
+    proposal_id: int,
+    body: ReassignProposalRequest,
+    view_mode: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Point one field-level proposal at a different employee, independent
+    of its doc_subject_match. Stays pending."""
+    return _review_action(
+        reassign_proposal, db, user, proposal_id, resolve_view_mode(user.role, view_mode),
+        employee_id=body.employee_id)
+
+
+@app.post("/proposed_changes/{proposal_id}/correct")
+def correct_proposed_change_route(
+    proposal_id: int,
+    body: CorrectProposalRequest,
+    view_mode: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Send a correction back through the function-calling loop. Stays
+    pending. An alternative to /edit for a harder case: ask the model to
+    re-extract with a hint, rather than typing the corrected value directly."""
+    return _review_action(
+        correct_proposal, db, user, proposal_id, resolve_view_mode(user.role, view_mode),
+        instruction=body.instruction)
+
+
+@app.post("/proposed_changes/{proposal_id}/reject")
+def reject_proposed_change_route(
+    proposal_id: int,
+    view_mode: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Reject a proposal. HR's fallback is the manual edit endpoints
+    (PATCH /employees/{id}, PUT /projects/{id}/description)."""
+    return _review_action(
+        reject_proposal, db, user, proposal_id, resolve_view_mode(user.role, view_mode))
+
+
+@app.post("/proposed_changes/{proposal_id}/undo")
+def undo_proposed_change_route(
+    proposal_id: int,
+    view_mode: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Flip an accepted/edited proposal back to pending and reverse exactly
+    what it wrote — only while its source document hasn't been finalized
+    yet (see app.proposals.undo)."""
+    return _review_action(
+        undo_proposal, db, user, proposal_id, resolve_view_mode(user.role, view_mode))
+
+
+@app.post("/proposed_changes/bulk_accept")
+def bulk_accept_proposed_changes_route(
+    body: BulkProposalRequest,
+    view_mode: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Accept every matching pending row — a loop over the exact same
+    accept() every single-row call goes through, no separate commit logic."""
+    return _bulk_action(
+        bulk_accept_proposals, db, user, resolve_view_mode(user.role, view_mode), body)
+
+
+@app.post("/proposed_changes/bulk_reject")
+def bulk_reject_proposed_changes_route(
+    body: BulkProposalRequest,
+    view_mode: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    return _bulk_action(
+        bulk_reject_proposals, db, user, resolve_view_mode(user.role, view_mode), body)
+
+
+@app.post("/docs/{doc_id}/finalize")
+def finalize_document_route(
+    doc_id: int,
+    body: FinalizeDocumentRequest,
+    view_mode: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """The "Update" action: accept every id in accept_ids, reject every
+    OTHER still-pending row this document has waiting, then clear the
+    document's own extracted text for good — a one-shot pass, not
+    repeatable once it's run once (see DocumentAlreadyFinalized)."""
+    try:
+        result = finalize_document_service(
+            db, user, doc_id, resolve_view_mode(user.role, view_mode), accept_ids=body.accept_ids)
+    except ReviewDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DocumentNotFound as exc:
+        raise HTTPException(status_code=404, detail="Document not found") from exc
+    except DocumentAlreadyFinalized as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return result
+
+
+def _bulk_action(fn, db, user, mode: str, body: BulkProposalRequest) -> dict:
+    try:
+        results = fn(db, user, mode, ids=body.ids, doc_id=body.doc_id, employee_id=body.employee_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"results": results}
+
+
+def _review_action(fn, db, user, proposal_id: int, mode: str, **kwargs) -> dict:
+    """Shared exception -> status-code translation for the single-row review
+    actions. They differ only in which service function they call, and
+    duplicating the same except-clauses for each one is how one of them
+    ends up quietly returning 500 for a missing row."""
+    try:
+        proposal = fn(db, user, proposal_id, view_mode=mode, **kwargs)
+    except ReviewDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ProposalNotFound as exc:
+        raise HTTPException(status_code=404, detail="Proposed change not found") from exc
+    except ProposalNotActionable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "id": proposal.id,
+        "status": proposal.status.value,
+        "employee_id": proposal.employee_id,
+        "change_type": proposal.change_type.value,
+        "proposed_value": json.loads(proposal.proposed_value),
+        "original_value": json.loads(proposal.original_value) if proposal.original_value else None,
+        "reviewed_by": proposal.reviewed_by,
+        "reviewed_at": proposal.reviewed_at,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Community Graph — private per-employee "who to contact for what" list.
+# See app/community_links.py's module docstring for the visibility rule
+# (unconditionally owner-only, no role exception) and the mentor-link
+# expiration mechanics.
+# ---------------------------------------------------------------------------
+
+@app.get("/community_links", response_model=list[CommunityLinkOut])
+def list_community_links_route(
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[CommunityLinkOut]:
+    mode = resolve_view_mode(user.role, view_mode)
+    return list_community_links_service(db, user, view_mode=mode)
+    """The caller's own community graph only — official + personal, merged,
+    with mentor-link expiration applied. No person_id parameter, on
+    purpose, same reason /me/notifications has none: there is no route
+    shape here that could read someone else's graph, for any role."""
+    
+
+
+@app.post("/community_links", status_code=201, response_model=CommunityLinkOut)
+def create_community_link_route(
+    body: CreateCommunityLinkRequest,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> CommunityLinkOut:
+    """Add a personal link. owner is always the caller — the request body
+    has no field for it, so nobody can add to someone else's graph even by
+    supplying an id."""
+    try:
+        return create_personal_link_service(
+            db, user, body.contact_employee_id, body.role_label, body.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.patch("/community_links/{link_id}", response_model=CommunityLinkOut)
+def update_community_link_route(
+    link_id: int,
+    body: UpdateCommunityLinkRequest,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> CommunityLinkOut:
+    """Only if owner + source=personal, else 403 — official links are
+    read-only regardless of role."""
+    changes = body.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status_code=422, detail="no fields supplied")
+    try:
+        return update_personal_link_service(db, user, link_id, changes)
+    except LinkNotFound as exc:
+        raise HTTPException(status_code=404, detail="Community link not found") from exc
+    except LinkDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.delete("/community_links/{link_id}", status_code=204)
+def delete_community_link_route(
+    link_id: int,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> None:
+    """Only if owner + source=personal, else 403 — same gate as PATCH."""
+    try:
+        delete_personal_link_service(db, user, link_id)
+    except LinkNotFound as exc:
+        raise HTTPException(status_code=404, detail="Community link not found") from exc
+    except LinkDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.get("/suggested_official_links", response_model=list[SuggestedOfficialLinkOut])
+def list_suggested_official_links_route(
+    office_id: int | None = Query(None, description="Restrict to one office."),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[SuggestedOfficialLinkOut]:
+    mode = resolve_view_mode(user.role, view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(status_code=403, detail="HR-only view")
+    try:
+        return list_suggested_official_links_service(db, user, office_id=office_id)
+    except SuggestionDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.post("/suggested_official_links/generate", status_code=201, response_model=list[SuggestedOfficialLinkOut])
+def generate_suggested_official_links_route(
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[SuggestedOfficialLinkOut]:
+    mode = resolve_view_mode(user.role, view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(status_code=403, detail="Generating official-link suggestions is an HR action")
+    return generate_suggested_official_links_service(db)
+
+
+@app.post("/suggested_official_links/{suggestion_id}/confirm", response_model=SuggestedOfficialLinkOut)
+def confirm_suggested_official_link_route(
+    suggestion_id: int,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> SuggestedOfficialLinkOut:
+    """Creates the real official edge, fanned out to every active employee
+    in the suggestion's office — see app.community_links for why."""
+    try:
+        return confirm_suggested_official_link_service(db, user, suggestion_id)
+    except SuggestionDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except SuggestionNotFound as exc:
+        raise HTTPException(status_code=404, detail="Suggestion not found") from exc
+    except SuggestionNotActionable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/suggested_official_links/{suggestion_id}/reject", response_model=SuggestedOfficialLinkOut)
+def reject_suggested_official_link_route(
+    suggestion_id: int,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> SuggestedOfficialLinkOut:
+    try:
+        return reject_suggested_official_link_service(db, user, suggestion_id)
+    except SuggestionDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except SuggestionNotFound as exc:
+        raise HTTPException(status_code=404, detail="Suggestion not found") from exc
+    except SuggestionNotActionable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/community_links/auto_assign_mentors", status_code=201, response_model=list[CommunityLinkOut])
+def auto_assign_mentors_route(
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[CommunityLinkOut]:
+    mode = resolve_view_mode(user.role, view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(status_code=403, detail="Auto-assigning mentors is an HR action")
+    try:
+        return auto_assign_mentors_service(db, user)
+    except SuggestionDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.post("/ask")
+def ask(
+    body: AskRequest,
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """Natural-language entry point to the seven-function tool-calling
+    layer. The model only ever emits a function name + arguments; every
+    result here comes from the same permission-filtered service functions
+    the structured endpoints above use — nothing bypasses the pipeline.
+
+    Every call opens or continues a "search" surface conversation (see
+    app.assistant_conversations) and records this turn to it — see
+    AskRequest's own docstring for the two ways a turn gets its PRIOR
+    context (server-side store vs. body.history), a decision this route
+    makes, not answer_service() itself (its signature is unchanged, still
+    taking a plain history list either way).
+
+    Also carries facts extracted from the caller's most recent PRD
+    conversation, if any (app.assistant_context) — e.g. a project the PRD
+    assistant confirmed requirements for, so a search-surface question can
+    be answered with that context without the caller repeating it.
+
+    And carries the people currently on the caller's screen, if
+    body.context_person_ids names any — re-resolved server-side
+    (app.people.resolve_context_people) rather than trusted from the
+    client, then handed to the model as their real ids (app.assistant_
+    context.context_people_message) so a follow-up like "who is the best
+    of these" can resolve "these" to something concrete instead of the
+    model having no idea who is being asked about."""
+    mode = resolve_view_mode(user.role, body.view_mode)
+    try:
+        conversation = open_or_continue(db, user, "search", body.conversation_id)
+    except ConversationNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    history = load_history(db, conversation) if body.conversation_id is not None else body.history
+    context = facts_context_message(db, user, mode, surface="search")
+    context_people = context_people_message(resolve_context_people(db, user, body.context_person_ids, mode))
+    result = answer_service(
+        db, user, body.message, mode, history,
+        extra_context_messages=[m for m in (context, context_people) if m] or None,
+    )
+
+    append_turn(
+        db, conversation, message=body.message,
+        tool_call=result.get("tool_call"), arguments=result.get("arguments"),
+        assistant_text=result.get("message") if result.get("tool_call") is None else None,
+    )
+    result["conversation_id"] = conversation.id
+    return result
+
+
+@app.post("/prd/ask")
+def prd_ask(
+    body: AskRequest,
+    project_id: int | None = Query(
+        None,
+        description=(
+            "Which project's PRD conversation to open. Required when "
+            "starting a new conversation (body.conversation_id absent); "
+            "ignored when continuing one."
+        ),
+    ),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """The PRD assistant's own entry point — the same resolve -> execute ->
+    phrase pipeline as POST /ask (both call answer_service()), run under
+    PRD_PROFILE instead of the default search profile, so this can only
+    ever call get_project_requirements/list_project_requirements_summary —
+    it has no people-search tool to call even if asked. HR + work mode
+    only, inline gate (POST /docs/upload's convention).
+
+    A PRD conversation is always about exactly one project — `project_id`
+    is required to open a fresh one, and picks which project's thread it
+    opens against; once `body.conversation_id` continues an existing one,
+    that conversation's own stored project_id is what's actually used (see
+    app.assistant_conversations.open_or_continue), so project_id is not
+    required on a continuing call.
+    """
+    mode = resolve_view_mode(user.role, body.view_mode)
+    if user.role != "hr" or mode != "work":
+        raise HTTPException(status_code=403, detail="The PRD assistant is an HR action in work mode")
+    if body.conversation_id is None and project_id is None:
+        raise HTTPException(status_code=422, detail="project_id is required to start a new PRD conversation")
+
+    try:
+        conversation = open_or_continue(db, user, "prd", body.conversation_id, project_id=project_id)
+    except ConversationNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    history = load_history(db, conversation) if body.conversation_id is not None else body.history
+    # PRD_SYSTEM_PROMPT requires a project NAME in the message before it will
+    # call get_project_requirements -- correct for a cold question, but this
+    # surface is already scoped to one project (AssistantConversation.
+    # project_id), and a caller sitting on that project's own page asking
+    # "what does this project need?" has every reason to expect the question
+    # resolves without repeating the name. Resolved server-side (not left to
+    # the frontend to prepend) so every caller of this route gets it, and
+    # stored history stays the raw question — see append_turn below.
+    project = db.get(Project, conversation.project_id) if conversation.project_id else None
+    contextualized_message = f'(Regarding the "{project.name}" project.) {body.message}' if project else body.message
+    # Facts from the caller's most recent SEARCH conversation, if any --
+    # e.g. a skill that turn looked for, so a PRD-surface question can be
+    # answered (or a follow-up suggestion computed) with that context.
+    context = facts_context_message(db, user, mode, surface="prd")
+    result = answer_service(
+        db, user, contextualized_message, mode, history, profile=PRD_PROFILE,
+        extra_context_messages=[context] if context else None, prd_project_id=conversation.project_id,
+    )
+
+    append_turn(
+        db, conversation, message=body.message,
+        tool_call=result.get("tool_call"), arguments=result.get("arguments"),
+        assistant_text=result.get("message") if result.get("tool_call") is None else None,
+    )
+    result["conversation_id"] = conversation.id
+    return result
+
+
+@app.get("/conversations/{surface}")
+def get_conversation_route(
+    surface: str,
+    project_id: int | None = Query(None, description="Required for surface=\"prd\" — which project's thread."),
+    view_mode: str | None = Query(None, description='"work" or "employee" — see GET /people.'),
+    db: Session = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict:
+    """The caller's most recent conversation on a surface, with its turns
+    — how a page reload rehydrates. "search" is never scoped to a project;
+    "prd" always is (project_id selects which project's thread, so HR
+    working on project B never rehydrates project A's), and is HR + work
+    mode only, the same gate as every other PRD-feature route."""
+    if surface not in ("search", "prd"):
+        raise HTTPException(status_code=404, detail="Unknown surface")
+    mode = resolve_view_mode(user.role, view_mode)
+    if surface == "prd" and (user.role != "hr" or mode != "work"):
+        raise HTTPException(status_code=403, detail="The PRD conversation surface is an HR action in work mode")
+
+    convo = get_most_recent_conversation(db, user, surface, project_id if surface == "prd" else None)
+    if convo is None:
+        return {"conversation_id": None, "turns": []}
+    return {
+        "conversation_id": convo.id,
+        "turns": [turn.model_dump() for turn in load_history(db, convo)],
+    }
+
+
+# Built frontend (frontend/dist, produced by the CI/CD deploy job's frontend
+# build step) is served from this same App Service -- one deploy target, one
+# origin, so the frontend's fetch calls need no CORS or absolute API_BASE in
+# production. Registered last so it never shadows an API route above; missing
+# in local dev (nobody runs `vite build` there), hence the directory guard.
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+if FRONTEND_DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets")
+
+    @app.get("/{full_path:path}")
+    def serve_frontend(full_path: str) -> FileResponse:
+        # Client-side routes (e.g. /profile/<id>) aren't real files -- fall
+        # back to index.html and let the SPA's own router take it from there.
+        candidate = FRONTEND_DIST / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(FRONTEND_DIST / "index.html")

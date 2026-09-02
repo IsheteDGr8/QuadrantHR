@@ -1,0 +1,105 @@
+# Runs automatically after terraform-azure applies successfully, same as before
+# azure-pipelines-backend.yml existed. Restored so database schema/data lifecycle
+# stays in one system (GitHub Actions): azure-pipelines-backend.yml now only deploys
+# the Function App, and never touches mob-training-db, so there's no longer a risk
+# of the two systems racing to write to it.
+#
+# workflow_dispatch is also kept as a manual escape hatch (e.g. to re-apply after
+# fixing a failed migration without waiting on another terraform apply).
+name: migrate-database
+
+on:
+  workflow_run:
+    workflows: ["terraform-azure"]
+    types: [completed]
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  migrate:
+    # Without the workflow_dispatch clause, a manual run would never actually do
+    # anything: github.event.workflow_run is undefined outside a workflow_run
+    # trigger, so the condition evaluated to false and the job silently skipped.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Get runner IP
+        id: ip
+        run: echo "ip=$(curl -s https://api.ipify.org)" >> "$GITHUB_OUTPUT"
+      - name: Open temporary firewall rule
+        run: |
+          az sql server firewall-rule create \
+            --resource-group MOB --server mob-sql-server-02 \
+            --name github-actions-temp \
+            --start-ip-address ${{ steps.ip.outputs.ip }} \
+            --end-ip-address ${{ steps.ip.outputs.ip }}
+      - name: Install sqlcmd
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mssql-tools18 unixodbc-dev
+          echo "/opt/mssql-tools18/bin" >> "$GITHUB_PATH"
+      - name: Ensure migration tracking table exists
+        run: |
+          sqlcmd -S mob-sql-server-02.database.windows.net -d mob-training-db \
+            -U mobsqladmin -P "${{ secrets.SQL_ADMIN_PASSWORD }}" -C -b -Q "
+            IF OBJECT_ID('dbo.SchemaMigrations') IS NULL
+            CREATE TABLE dbo.SchemaMigrations (
+              filename NVARCHAR(255) PRIMARY KEY,
+              applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+            );"
+      - name: Run only new migrations
+        run: |
+          set -euo pipefail
+          for file in db/migrations/*.sql; do
+            fname=$(basename "$file")
+            already_applied=$(sqlcmd -S mob-sql-server-02.database.windows.net -d mob-training-db \
+              -U mobsqladmin -P "${{ secrets.SQL_ADMIN_PASSWORD }}" -C -h -1 \
+              -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.SchemaMigrations WHERE filename = '$fname'" | tr -d '[:space:]')
+            if [ "$already_applied" = "0" ]; then
+              echo "Applying $fname"
+              # Explicit exit-code check, not just `set -e`: this is the line that
+              # decides whether $fname gets recorded as applied. A migration that
+              # fails partway must never reach the INSERT below, or SchemaMigrations
+              # ends up lying about what's actually in the database -- which is
+              # exactly how 009 and 011 went missing while marked "applied".
+              if ! sqlcmd -S mob-sql-server-02.database.windows.net -d mob-training-db \
+                -U mobsqladmin -P "${{ secrets.SQL_ADMIN_PASSWORD }}" -C -b -i "$file"; then
+                echo "::error file=$file::Migration failed -- NOT recording it as applied. Fix the migration (or repair the database) and re-run this job."
+                exit 1
+              fi
+              sqlcmd -S mob-sql-server-02.database.windows.net -d mob-training-db \
+                -U mobsqladmin -P "${{ secrets.SQL_ADMIN_PASSWORD }}" -C -b \
+                -Q "INSERT INTO dbo.SchemaMigrations (filename) VALUES ('$fname')"
+            else
+              echo "Skipping $fname - already applied"
+            fi
+          done
+      - name: Verify the schema matches what the migrations claim
+        # SchemaMigrations recorded 009 as applied when Companies had never been created,
+        # and 011 apparently went the same way. The exit-code fix above stops that
+        # happening again; it does not detect what is already missing.
+        #
+        # This runs AFTER the migrations and reports every gap in one pass, so a repair is
+        # one round trip instead of one per missing table — each of which otherwise costs
+        # a firewall rule and a workflow run.
+        run: |
+          sqlcmd -S mob-sql-server-02.database.windows.net -d mob-training-db \
+            -U mobsqladmin -P "${{ secrets.SQL_ADMIN_PASSWORD }}" \
+            -C -b -i db/verify_schema.sql
+
+      - name: Close temporary firewall rule
+        if: always()
+        run: |
+          az sql server firewall-rule delete \
+            --resource-group MOB --server mob-sql-server-02 \
+            --name github-actions-temp

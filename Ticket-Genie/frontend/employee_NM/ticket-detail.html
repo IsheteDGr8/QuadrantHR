@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ticket Details | TicketGenie Enterprise</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="employee.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .main-content {
+      flex-grow: 1;
+      height: 100vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      background: #f8fafc;
+    }
+    .topbar {
+      height: 75px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 32px;
+      box-sizing: border-box;
+      flex-shrink: 0;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="shared-sidebar"></div>
+
+  <main class="main-content">
+    <div id="shared-topnav"></div>
+
+    <div class="page-padding" style="padding: 24px 32px;">
+      <div style="margin-bottom: 20px;">
+        <a href="my-tickets.html" class="action-btn" style="padding: 8px 16px; background: white; border: 1px solid #dfe5e1; border-radius: 8px; font-size: 0.85rem; text-decoration: none; color: #334155; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
+          <i class="fa-solid fa-arrow-left"></i> Back to My Tickets
+        </a>
+      </div>
+
+      <div id="ticketDetailContainer">
+        <div style="padding: 40px; text-align: center; color: #6b7280;">Loading ticket conversation thread...</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Genie AI Floating Button & Drawer -->
+  <button class="genie-button" id="genieButton" type="button">
+    <i class="fa-solid fa-wand-magic-sparkles"></i>
+    <span>Ask Genie</span>
+  </button>
+
+  <div class="genie-chat" id="genieChat">
+    <div class="genie-chat-header">
+      <div class="genie-header-info">
+        <div class="genie-avatar"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+        <div><strong>Genie AI</strong><span><span class="genie-status-dot"></span> Online</span></div>
+      </div>
+      <button class="genie-close" id="closeGenieButton" type="button"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="genie-messages" id="genieMessages">
+      <div class="genie-message">
+        <div class="genie-message-avatar"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+        <div class="genie-bubble">Hi! I'm Genie, your AI support assistant. How can I help you today?</div>
+      </div>
+    </div>
+    <div class="genie-input-area">
+      <input type="text" id="genieInput" placeholder="Ask a question..." autocomplete="off">
+      <button id="genieSendButton" type="button"><i class="fa-solid fa-arrow-up"></i></button>
+    </div>
+    <div class="genie-disclaimer">Genie may occasionally provide inaccurate information.</div>
+  </div>
+
+  <script src="../js/api.js?v=20260818_3"></script>
+  <script src="../js/azure-auth.js?v=20260818_1"></script>
+  <script src="../js/theme.js?v=20260818_1"></script>
+  <script src="components.js?v=20260818_1"></script>
+  <script src="employee.js?v=20260818_3"></script>
+  <script>
+function switchPortalView(viewType) {
+    if (typeof showNotification === 'function') {
+        showNotification(viewType === 'management' ? 'Switched to Management View mode.' : 'Switched to Employee View mode.', 'info');
+    }
+}
+
+function handleSignOut(event) {
+    if (event) event.preventDefault();
+    window.location.href = '../index.html';
+}
+</script>
+</body>
+</html>

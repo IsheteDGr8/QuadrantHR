@@ -1,0 +1,142 @@
+# Main CI/CD Pipeline — AI Policy Generator
+#
+# Flow on every push to main:
+#   1. Build & test backend
+#   2. Build frontend
+#   3. Publish backend + frontend artifacts
+#   4. Terraform plan+apply
+#   5. Deploy backend to Azure App Service
+#   6. Deploy frontend to Azure Static Web Apps
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: bugbusters-common
+
+stages:
+  - stage: BuildAndTest
+    displayName: 'Build & Test'
+
+    jobs:
+      # -------------------------------
+      # Backend CI
+      # -------------------------------
+      - job: Backend
+        displayName: 'Backend (Python)'
+        steps:
+          - template: templates/backend-steps.yml
+            parameters:
+              pythonVersion: '3.11'
+              workingDir: 'backend'
+
+      # -------------------------------
+      # Frontend CI
+      # -------------------------------
+      - job: Frontend
+        displayName: 'Frontend (React/Vite)'
+
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: '20.x'
+
+          - script: npm ci
+            displayName: 'Install frontend dependencies'
+            workingDirectory: 'Frontend'
+
+          - script: npm run build
+            displayName: 'Build frontend'
+            workingDirectory: 'Frontend'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish frontend artifact'
+            inputs:
+              targetPath: 'Frontend/dist'
+              artifact: 'frontend-dist'
+
+  # -----------------------------------
+  # Infrastructure + Deployment
+  # -----------------------------------
+  - stage: ProvisionAndDeploy
+    displayName: 'Provision & Deploy'
+    dependsOn: BuildAndTest
+    condition: succeeded()
+
+    jobs:
+      # -------------------------------
+      # Terraform
+      # -------------------------------
+      - job: TerraformApply
+        displayName: 'Terraform Apply'
+
+        steps:
+          - template: templates/terraform-steps.yml
+            parameters:
+              command: 'apply'
+
+      # -------------------------------
+      # Backend CD
+      # -------------------------------
+      - deployment: DeployBackend
+        displayName: 'Deploy backend'
+        dependsOn: TerraformApply
+        environment: 'bugbusters-app'
+
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: backend-package
+
+                - template: templates/deploy-webapp-steps.yml
+                  parameters:
+                    appName: 'app-ai-policy-backend'
+                    packagePath: '$(Pipeline.Workspace)/backend-package/backend.zip'
+
+      # -------------------------------
+      # Frontend CD
+      # -------------------------------
+      - deployment: DeployFrontend
+        displayName: 'Deploy frontend'
+        dependsOn: TerraformApply
+        environment: 'bugbusters-app'
+
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: frontend-dist
+
+                - task: AzureCLI@2
+                  displayName: 'Get Static Web App deployment token'
+                  inputs:
+                    azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      TOKEN=$(az staticwebapp secrets list \
+                        --name app-ai-policy-frontend \
+                        --resource-group "$(RESOURCE_GROUP)" \
+                        --query properties.apiKey \
+                        --output tsv)
+
+                      echo "##vso[task.setvariable variable=SWA_TOKEN;issecret=true]$TOKEN"
+
+                - task: AzureStaticWebApp@0
+                  displayName: 'Deploy React frontend'
+                  inputs:
+                    azure_static_web_apps_api_token: '$(SWA_TOKEN)'
+                    workingDirectory: '$(Pipeline.Workspace)'
+                    app_location: 'frontend-dist'
+                    skip_app_build: true

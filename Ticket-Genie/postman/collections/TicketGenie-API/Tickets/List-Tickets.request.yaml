@@ -1,0 +1,15 @@
+$kind: http-request
+name: List Tickets
+method: GET
+url: '{{baseUrl}}/api/tickets'
+order: 2000
+queryParams:
+  - key: status
+    value: ''
+    disabled: true
+  - key: priority
+    value: ''
+    disabled: true
+  - key: search
+    value: ''
+    disabled: true

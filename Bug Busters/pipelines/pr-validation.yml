@@ -1,0 +1,31 @@
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: bugbusters-common
+
+stages:
+  - stage: Validate
+    displayName: 'Lint, Test, Plan'
+    jobs:
+      - job: BackendChecks
+        displayName: 'Backend (Python)'
+        steps:
+          - template: templates/backend-steps.yml
+            parameters:
+              pythonVersion: '3.11'
+              workingDir: 'backend'
+
+      - job: TerraformPlan
+        displayName: 'Terraform Plan'
+        steps:
+          - template: templates/terraform-steps.yml
+            parameters:
+              command: 'plan'

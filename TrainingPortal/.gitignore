@@ -1,0 +1,40 @@
+.env
+venv/
+__pycache__/
+*.pyc
+.terraform/
+*.tfstate
+*.tfstate.backup
+terraform.tfvars
+.DS_Store
+
+# quizgen
+.venv/
+data/output/
+data/documents/*.pdf
+data/documents/*.txt
+data/documents/*.md
+!data/documents/.gitkeep
+*.egg-info/
+
+# Backups created by scripts/load_env_from_vault.sh — contain live secrets
+.env.bak
+.env.*
+!.env.example
+
+# frontend build artefacts
+node_modules/
+web-app/dist/
+
+# Local credential store and session signing key — never commit these.
+# (Re-added: a revert removed this line, and .auth/ was swept in by `git add -A`.)
+.auth/
+
+# Local dev server output and the local SQLite bank — swept in by `git add -A` once already.
+demo-data/*.log
+demo-data/*.db
+
+# Vendored into the deploy package by azure-pipelines-backend.yml's build step, fresh
+# from src/quizgen on every run. Never meant to be committed — that would be exactly the
+# copy-that-can-drift problem api/shared/qscore.py's header warns about.
+api/quizgen/

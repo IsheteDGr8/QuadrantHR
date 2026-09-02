@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Request | TicketGenie Enterprise</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        /* Enterprise Layout Fixes for Sidebar & Main Content Alignment */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .main-content {
+            flex-grow: 1;
+            height: 100vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            background: #f8fafc;
+        }
+        .topbar {
+            height: 75px;
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 32px;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<aside class="sidebar">
+    <div class="brand">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="brand-icon">
+                <i class="fa-solid fa-ticket"></i>
+            </div>
+            <div>
+                <h2>TicketGenie</h2>
+                <span>Employee Portal</span>
+            </div>
+        </div>
+    </div>
+
+    <nav class="navigation">
+        <div style="height: 1px; background: #402b4a; margin: 6px 10px 4px 10px;"></div>
+        <div class="nav-title" style="font-size: 15px !important; font-weight: 700 !important; letter-spacing: 0.8px !important;">Workspace</div>
+        <a href="index.html" class="nav-item">
+            <i class="fa-solid fa-house"></i><span>Dashboard</span>
+        </a>
+        <a href="new-request.html" class="nav-item">
+            <i class="fa-solid fa-plus"></i><span>Create Request</span>
+        </a>
+        <a href="my-tickets.html" class="nav-item">
+            <i class="fa-solid fa-ticket"></i><span>My Requests</span>
+        </a>
+        
+
+        <div style="height: 1px; background: #402b4a; margin: 18px 10px 4px 10px;"></div>
+        <div class="nav-title" style="font-size: 15px !important; font-weight: 700 !important; letter-spacing: 0.8px !important;">Time Off & Company</div>
+        <a href="announcements.html" class="nav-item">
+            <i class="fa-solid fa-bullhorn"></i><span>Announcements</span>
+        </a>
+
+        <div style="height: 1px; background: #402b4a; margin: 18px 10px 4px 10px;"></div>
+        <div class="nav-title" style="font-size: 15px !important; font-weight: 700 !important; letter-spacing: 0.8px !important;">Resources</div>
+        <a href="knowledge-base.html" class="nav-item">
+            <i class="fa-solid fa-book-open"></i><span>Knowledge Base</span>
+        </a>
+        <a href="notifications.html" class="nav-item">
+            <i class="fa-solid fa-bell"></i><span>Notifications</span><span class="notification-count">3</span>
+        </a>
+        <a href="profile.html" class="nav-item">
+            <i class="fa-solid fa-user-gear"></i><span>Profile & Credentials</span>
+        </a>
+    </nav>
+
+    <div class="sidebar-bottom">
+        <div style="height: 1px; background: #402b4a; margin: 15px 0;"></div>
+        <a href="../index.html" class="nav-item" style="color: #cbd5e1;">
+            <i class="fa-solid fa-arrow-left" style="color: #94a3b8;"></i><span>Go Back</span>
+        </a>
+    </div>
+</aside>
+
+<main class="main-content">
+    <header class="topbar">
+        <div class="header-left" style="display: flex; align-items: center; gap: 20px;">
+            <button class="icon-button" id="sidebarToggle" type="button" aria-label="Toggle Sidebar" onclick="toggleEmployeeSidebar(event)" style="font-size: 18px; width: 40px; height: 40px; border-radius: 8px; background: #f1f5f9; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569;">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="page-title">
+                <!-- Upper title removed as requested -->
+            </div>
+        </div>
+
+        <div class="topbar-actions" style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+            <div class="search-box" style="display: flex; align-items: center; gap: 8px; background: #f8fafc; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 8px;">
+                <i class="fa-solid fa-magnifying-glass" style="font-size: 14px; color: #64748b;"></i>
+                <input type="text" placeholder="Search..." id="globalSearch" style="font-size: 14px; border: none; outline: none; background: transparent; width: 140px; color: #0f172a;">
+                <span class="shortcut" style="font-size: 11px; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; color: #475569; font-weight: 600;">⌘ K</span>
+            </div>
+            <button id="myCustomDarkToggle" class="icon-button" aria-label="Toggle Dark Mode" onclick="toggleEmployeeDarkMode(event)" style="position: relative; display: flex; align-items: center; justify-content: center; width: 37px; height: 37px;">
+    <!-- Moon SVG for Light Mode -->
+    <svg id="customMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+    <!-- Sun SVG for Dark Mode -->
+    <svg id="customSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+</button>
+
+            <!-- Profile Dropdown Menu with Green Profile Icon -->
+            <div style="position: relative; display: inline-block;">
+    <button id="profileMenuBtn" type="button" class="icon-button" aria-label="Profile Menu" style="width: 38px; height: 38px; border-radius: 50%; background: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; transition: all 0.2s ease;" onmouseover="this.style.background='#e9d5ff'; this.style.borderColor='#c084fc';" onmouseout="this.style.background='#f3e8ff'; this.style.borderColor='#d8b4fe';">
+        <i class="fa-solid fa-user"></i>
+    </button>
+    
+    <div id="profileDropdown" style="display: none; position: absolute; right: 0; top: 46px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.08); width: 240px; z-index: 1000; overflow: hidden; padding: 6px;">
+    <!-- User Info Header -->
+
+    <!-- View Switcher Section -->
+    <div style="padding: 4px 8px; font-size: 10px; color: #94a3b8; font-weight: 700; letter-spacing: 0.5px;">SWITCH VIEW</div>
+    <button type="button" onclick="switchPortalView('employee')" style="width: 100%; text-align: left; background: transparent; border: none; padding: 9px 12px; font-size: 12px; color: #334155; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 10px; border-radius: 6px; transition: background 0.15s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        <i class="fa-solid fa-user" style="color: #9333ea; width: 16px; text-align: center;"></i> Employee View
+    </button>
+    <button type="button" onclick="switchPortalView('management')" style="width: 100%; text-align: left; background: transparent; border: none; padding: 9px 12px; font-size: 12px; color: #334155; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 10px; border-radius: 6px; transition: background 0.15s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        <i class="fa-solid fa-user-shield" style="color: #c026d3; width: 16px; text-align: center;"></i> Management View
+    </button>
+
+    <!-- Divider & Go Back -->
+    <div style="height: 1px; background: #f1f5f9; margin: 6px 0;"></div>
+    <a href="../index.html" style="width: 100%; text-align: left; background: transparent; border: none; padding: 9px 12px; font-size: 12px; color: #334155; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 10px; border-radius: 6px; text-decoration: none; transition: background 0.15s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        <i class="fa-solid fa-arrow-left" style="color: #64748b; width: 16px; text-align: center;"></i> Go Back
+    </a>
+</div>
+</div>
+        </div>
+    </header>
+
+    <section class="section" style="padding: 28px 36px; box-sizing: border-box; width: 100%;">
+        <!-- Expanded Full-Page Grid Layout Container with top margin added -->
+        <div style="display: grid; grid-template-columns: 3fr 1fr; gap: 24px; width: 100%; align-items: start;">
+            
+            <!-- Left Side: Fuller Main Request Form Box with Restored Gold Accent Tab -->
+            <div style="background: #ffffff; border: 1px solid #e1e6e2; border-left: 4px solid #d4a359; border-radius: 8px; padding: 36px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); width: 100%; box-sizing: border-box;">
+                
+                <!-- Box Header / Title Inside the Box -->
+                <div style="margin-bottom: 24px;">
+                    <h3 style="font-size: 20px; color: #1e293b; margin-bottom: 6px;">Enterprise Ticketing & Routing</h3>
+                    <p style="font-size: 14px; color: #64748b;">Select your submission classification below for direct routing to specialized operational teams.</p>
+                </div>
+
+                <!-- Tabs Underneath Title Inside the Box -->
+                <div style="display: flex; gap: 12px; margin-bottom: 32px; border-bottom: 1px solid #e1e6e2; padding-bottom: 16px; flex-wrap: wrap;">
+                    <button type="button" id="tabStandardBtn" onclick="switchTab('standard')" style="background: #3b82f6; color: #fff; border: none; padding: 12px 22px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                        <i class="fa-solid fa-file-lines"></i> Standard Request
+                    </button>
+                    <button type="button" id="tabLeaveBtn" onclick="switchTab('leave')" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 12px 22px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                        <i class="fa-solid fa-calendar-days"></i> Leave Management Request
+                    </button>
+                    <button type="button" id="tabAnonymousBtn" onclick="switchTab('anonymous')" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 12px 22px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                        <i class="fa-solid fa-user-secret"></i> Anonymous Request
+                    </button>
+                </div>
+
+                <!-- 1. Standard Request Form Container -->
+                <div id="standardTabContent">
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="font-size: 18px; color: #1e293b; margin-bottom: 6px;">Standard Support Ticket</h3>
+                        <p style="font-size: 13px; color: #64748b;">Logged under your Azure Entra ID profile for direct department tracking.</p>
+                    </div>
+                    
+                    <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 14px 18px; border-radius: 4px; margin-bottom: 24px; font-size: 13px; color: #1e40af; line-height: 1.5;">
+                        <strong>When to use this request:</strong> Use this form for general IT support, software/hardware access issues, account management, HR operational questions, or administrative requests linked to your active profile.
+                    </div>
+
+                    <form id="standardTicketForm" onsubmit="event.preventDefault(); submitEmployeeStandardTicket(event); return false;" style="display: flex; flex-direction: column; gap: 24px;">
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">Request Title / Subject</label>
+                            <input id="standardSubject" type="text" required placeholder="e.g., VPN Connection Issue / Account Provisioning" style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff; color: #1e293b; box-sizing: border-box;">
+                        </div>
+
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">Department / Team</label>
+                            <select id="standardDepartment" style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff; color: #1e293b; box-sizing: border-box;">
+                                <option value="Auto" selected>Auto (AI Classification)</option>
+                                <option value="IT & Technology">IT & Technology</option>
+                                <option value="HR & Workplace Operations">HR & Workplace Operations</option>
+                                <option value="Account Management">Account Management</option>
+                                <option value="Upper Management/Administration">Upper Management/Administration</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">Description & Specifications</label>
+                            <textarea id="standardDescription" rows="7" required placeholder="Provide complete specifications or error details..." style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
+                        </div>
+
+                        <button id="submitStandardBtn" type="submit" style="background: #3b82f6; color: #fff; border: none; padding: 14px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; align-self: flex-start; transition: background 0.2s;">
+                            <i class="fa-solid fa-paper-plane" style="margin-right: 6px;"></i> Submit Standard Ticket
+                        </button>
+                    </form>
+                </div>
+
+                <!-- 2. Leave Management Form Container -->
+                <div id="leaveTabContent" style="display: none;">
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="font-size: 18px; color: #1e293b; margin-bottom: 6px;">Leave Management Request</h3>
+                    </div>
+
+                    <div style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 14px 18px; border-radius: 4px; margin-bottom: 24px; font-size: 13px; color: #065f46; line-height: 1.5;">
+                        <strong>When to use this request:</strong> Use this form to schedule Paid Time Off (PTO), sick leave, parental leave, or bereavement leave. Once approved, dates automatically sync with your team calendar and notify your handover lead.<br><br>
+                        <strong>Note:</strong> This ticket will cycle through upper management for approval beforehand.
+                    </div>
+
+                    <form id="leaveTicketForm" onsubmit="event.preventDefault(); submitEmployeeLeaveTicket(event); return false;" style="display: flex; flex-direction: column; gap: 24px;">
+                        <div style="display: flex; gap: 20px;">
+                            <div style="flex: 1;">
+                                <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">Leave Type</label>
+                                <select id="leaveTypeSelect" style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff; color: #1e293b; box-sizing: border-box;">
+                                    <option>Paid Time Off (PTO)</option>
+                                    <option>Sick Leave</option>
+                                    <option>Parental Leave</option>
+                                    <option>Bereavement Leave</option>
+                                    <option>Unpaid Leave</option>
+                                </select>
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">Coverage / Handover Lead</label>
+                                <input id="leaveHandoverLead" type="text" placeholder="Colleague covering your duties" style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff; color: #1e293b; box-sizing: border-box;">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 20px;">
+                            <div style="flex: 1;">
+                                <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">Start Date</label>
+                                <input id="leaveStartDate" type="date" style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff; color: #1e293b; box-sizing: border-box;">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">End Date</label>
+                                <input id="leaveEndDate" type="date" style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff; color: #1e293b; box-sizing: border-box;">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">Reason / Handover Notes</label>
+                            <textarea id="leaveDescription" rows="5" placeholder="Enter details for HR review..." style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
+                        </div>
+
+                        <button id="submitLeaveBtn" type="submit" style="background: #10b981; color: #fff; border: none; padding: 14px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; align-self: flex-start;">
+                            <i class="fa-solid fa-calendar-check" style="margin-right: 6px;"></i> Submit Leave Request
+                        </button>
+                    </form>
+                </div>
+
+                <!-- 3. Anonymous Request Form Container -->
+                <div id="anonymousTabContent" style="display: none;">
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="font-size: 18px; color: #1e293b; margin-bottom: 6px;">Confidential / Anonymous Submission</h3>
+                        <p style="font-size: 13px; color: #64748b;">Your Entra ID credentials and user profile are stripped from this ticket before reaching management review queues.</p>
+                    </div>
+
+                    <div style="background: #f8fafc; border-left: 4px solid #475569; padding: 14px 18px; border-radius: 4px; margin-bottom: 24px; font-size: 13px; color: #334155; line-height: 1.5;">
+                        <strong>When to use this request:</strong> Use this form for secure workplace feedback, ethics or compliance reporting, or sensitive suggestions where you require total anonymity from department management views.
+                    </div>
+
+                    <form id="anonymousTicketForm" onsubmit="event.preventDefault(); submitEmployeeAnonymousTicket(event); return false;" style="display: flex; flex-direction: column; gap: 24px;">
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">Category / Concern Area</label>
+                            <select id="anonymousCategory" style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #fff; color: #1e293b; box-sizing: border-box;">
+                                <option>Workplace Feedback & Improvements</option>
+                                <option>Compliance & Ethics Reporting</option>
+                                <option>Anonymous Suggestion</option>
+                                <option>Other Confidential Matter</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px;">Confidential Message</label>
+                            <textarea id="anonymousDescription" rows="7" placeholder="Provide detailed information securely and anonymously..." style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
+                        </div>
+
+                        <button id="submitAnonymousBtn" type="submit" style="background: #475569; color: #fff; border: none; padding: 14px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; align-self: flex-start;">
+                            <i class="fa-solid fa-user-secret" style="margin-right: 6px;"></i> Submit Anonymously
+                        </button>
+                    </form>
+                </div>
+
+            </div>
+
+            <!-- Right Side: Fuller Stacked Information Boxes -->
+            <div style="display: flex; flex-direction: column; gap: 24px;">
+                
+                <!-- Box 1: Talking to an Agent Tips -->
+                <div style="background: #ffffff; border: 1px solid #e1e6e2; border-left: 4px solid #3b82f6; border-radius: 8px; padding: 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: #1e40af; font-weight: 700; font-size: 15px;">
+                        <i class="fa-solid fa-headset"></i> Talking to an Agent Tips
+                    </div>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #334155; line-height: 1.7; display: flex; flex-direction: column; gap: 8px;">
+                        <li>Include clear error codes or screenshots in your active chat thread.</li>
+                        <li>Be specific about your hardware or software version numbers.</li>
+                        <li>Keep your ticket reference ID handy for quick follow-ups.</li>
+                    </ul>
+                </div>
+
+                <!-- Box 2: Genie AI Quick Routing Notice -->
+                <div style="background: #ffffff; border: 1px solid #e1e6e2; border-left: 4px solid #10b981; border-radius: 8px; padding: 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: #065f46; font-weight: 700; font-size: 15px;">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Genie AI Quick Routing Notice
+                    </div>
+                    <p style="margin: 0; font-size: 13px; color: #334155; line-height: 1.7;">
+                        Submitting tickets through these forms instantly generates a live ticket thread. You can also use the <strong>"Ask Genie"</strong> assistant widget in the bottom-right corner for instant answers before a human agent picks up your case.
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+    </section>
+</main>
+
+<!-- Genie AI Floating Button & Drawer -->
+<button class="genie-button" id="genieButton" type="button">
+    <i class="fa-solid fa-wand-magic-sparkles"></i>
+    <span>Ask Genie</span>
+</button>
+
+<div class="genie-chat" id="genieChat">
+    <div class="genie-chat-header">
+        <div class="genie-header-info">
+            <div class="genie-avatar">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+            </div>
+            <div>
+                <strong>Genie AI</strong>
+                <span><span class="genie-status-dot"></span> Online</span>
+            </div>
+        </div>
+        <button class="genie-close" id="closeGenieButton" type="button">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+    <div class="genie-messages" id="genieMessages">
+        <div class="genie-message">
+            <div class="genie-message-avatar">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+            </div>
+            <div class="genie-bubble">
+                Need guidance on choosing the right ticket category or managing your leave timeline?
+            </div>
+        </div>
+    </div>
+    <div class="genie-input-area">
+        <input type="text" id="genieInput" placeholder="Ask a question..." autocomplete="off">
+        <button id="genieSendButton" type="button">
+            <i class="fa-solid fa-arrow-up"></i>
+        </button>
+    </div>
+    <div class="genie-disclaimer">
+        Genie may occasionally provide inaccurate information.
+    </div>
+</div>
+
+<script>
+function switchTab(tabType) {
+    const standardContent = document.getElementById('standardTabContent');
+    const leaveContent = document.getElementById('leaveTabContent');
+    const anonymousContent = document.getElementById('anonymousTabContent');
+    
+    const standardBtn = document.getElementById('tabStandardBtn');
+    const leaveBtn = document.getElementById('tabLeaveBtn');
+    const anonymousBtn = document.getElementById('tabAnonymousBtn');
+
+    if (standardContent) standardContent.style.display = 'none';
+    if (leaveContent) leaveContent.style.display = 'none';
+    if (anonymousContent) anonymousContent.style.display = 'none';
+
+    [standardBtn, leaveBtn, anonymousBtn].forEach(btn => {
+        if (btn) {
+            btn.style.background = '#f1f5f9';
+            btn.style.color = '#475569';
+            btn.style.border = '1px solid #cbd5e1';
+        }
+    });
+
+    if (tabType === 'standard') {
+        if (standardContent) standardContent.style.display = 'block';
+        if (standardBtn) { standardBtn.style.background = '#3b82f6'; standardBtn.style.color = '#fff'; standardBtn.style.border = 'none'; }
+    } else if (tabType === 'leave') {
+        if (leaveContent) leaveContent.style.display = 'block';
+        if (leaveBtn) { leaveBtn.style.background = '#10b981'; leaveBtn.style.color = '#fff'; leaveBtn.style.border = 'none'; }
+    } else if (tabType === 'anonymous') {
+        if (anonymousContent) anonymousContent.style.display = 'block';
+        if (anonymousBtn) { anonymousBtn.style.background = '#475569'; anonymousBtn.style.color = '#fff'; anonymousBtn.style.border = 'none'; }
+    }
+}
+
+let isSubmittingRequest = false;
+
+async function submitEmployeeStandardTicket(event) {
+    if (event) event.preventDefault();
+    if (isSubmittingRequest) return false;
+
+    const submitBtn = document.getElementById('submitStandardBtn');
+    const subjectEl = document.getElementById('standardSubject');
+    const deptEl = document.getElementById('standardDepartment');
+    const descEl = document.getElementById('standardDescription');
+    
+    const subject = subjectEl ? subjectEl.value.trim() : '';
+    const department = deptEl ? deptEl.value : 'Auto';
+    const description = descEl ? descEl.value.trim() : '';
+    
+    if (!subject || !description) {
+        if (typeof showNotification === 'function') {
+            showNotification('Please fill in the Request Title / Subject and Description before submitting.', 'warning');
+        } else {
+            alert('Please fill in the Request Title / Subject and Description before submitting.');
+        }
+        return false;
+    }
+
+    isSubmittingRequest = true;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i> Submitting...';
+    }
+
+    let backendDept = null;
+    if (department && department !== 'Auto') {
+        if (department.includes('HR')) backendDept = 'HR Team';
+        else if (department.includes('Account')) backendDept = 'Accounting Team';
+        else if (department.includes('Upper') || department.includes('Admin')) backendDept = 'Upper Management';
+        else if (department.includes('Workplace')) backendDept = 'Workplace Operations Team';
+        else backendDept = 'IT Team';
+    }
+
+    const payload = {
+        title: subject,
+        description: description,
+        category: 'IT Support',
+        priority: 'Medium',
+        department: backendDept,
+        department_override: backendDept
+    };
+
+    try {
+        let createdTicket;
+        if (typeof apiCreateTicket === 'function') {
+            createdTicket = await apiCreateTicket(payload);
+        } else {
+            const response = await fetch('/api/tickets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                throw new Error(`Ticket creation failed (HTTP ${response.status})`);
+            }
+            createdTicket = await response.json();
+        }
+        if (!createdTicket || !createdTicket.id) {
+            throw new Error('The server did not return a created ticket.');
+        }
+
+        if (typeof showNotification === 'function') {
+            showNotification(`Support request ${createdTicket.id} submitted successfully! Redirecting...`, 'success');
+        }
+        setTimeout(() => {
+            window.location.href = 'my-tickets.html';
+        }, 1200);
+    } catch (e) {
+        isSubmittingRequest = false;
+        console.error('Ticket submission failed:', e);
+        if (typeof showNotification === 'function') {
+            showNotification(e.message || 'Unable to submit the support request. Please try again.', 'error');
+        } else {
+            alert(e.message || 'Unable to submit the support request. Please try again.');
+        }
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane" style="margin-right:6px;"></i> Submit Request';
+        }
+    }
+    return false;
+}
+
+async function submitEmployeeLeaveTicket(event) {
+    if (event) event.preventDefault();
+    if (isSubmittingRequest) return false;
+    isSubmittingRequest = true;
+
+    const btn = document.getElementById('submitLeaveBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i> Submitting...';
+    }
+
+    const type = document.getElementById('leaveTypeSelect')?.value || 'Paid Time Off (PTO)';
+    const start = document.getElementById('leaveStartDate')?.value || '';
+    const end = document.getElementById('leaveEndDate')?.value || '';
+    const notes = document.getElementById('leaveDescription')?.value || '';
+    const payload = {
+        title: `Leave Request: ${type}`,
+        description: `Dates: ${start} to ${end}. ${notes}`,
+        category: 'Time Off',
+        priority: 'Medium',
+        department_override: 'Upper Management'
+    };
+
+    try {
+        if (typeof apiCreateTicket === 'function') await apiCreateTicket(payload);
+        if (typeof showNotification === 'function') {
+            showNotification('Leave request submitted successfully! Redirecting...', 'success');
+        }
+        setTimeout(() => { window.location.href = 'my-tickets.html'; }, 1200);
+    } catch (e) {
+        isSubmittingRequest = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-calendar-check" style="margin-right:6px;"></i> Submit Leave Request';
+        }
+    }
+    return false;
+}
+
+async function submitEmployeeAnonymousTicket(event) {
+    if (event) event.preventDefault();
+    if (isSubmittingRequest) return false;
+    isSubmittingRequest = true;
+
+    const btn = document.getElementById('submitAnonymousBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="margin-right:6px;"></i> Submitting...';
+    }
+
+    const cat = document.getElementById('anonymousCategory')?.value || 'Confidential';
+    const desc = document.getElementById('anonymousDescription')?.value || '';
+    const payload = {
+        title: `Confidential Report: ${cat}`,
+        description: desc,
+        category: cat,
+        priority: 'High',
+        is_anonymous: true
+    };
+
+    try {
+        if (typeof apiCreateTicket === 'function') await apiCreateTicket(payload);
+        if (typeof showNotification === 'function') {
+            showNotification('Anonymous report submitted confidentially! Redirecting...', 'success');
+        }
+        setTimeout(() => { window.location.href = 'my-tickets.html'; }, 1200);
+    } catch (e) {
+        isSubmittingRequest = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-user-secret" style="margin-right:6px;"></i> Submit Anonymously';
+        }
+    }
+    return false;
+}
+
+function switchPortalView(viewType) {
+    if (typeof showNotification === 'function') {
+        showNotification(viewType === 'management' ? 'Switched to Management View mode.' : 'Switched to Employee View mode.', 'info');
+    }
+}
+
+function handleSignOut(event) {
+    if (event) event.preventDefault();
+    window.location.href = '../index.html';
+}
+</script>
+<script src="../js/api.js?v=20260816_10"></script>
+<script src="../js/script.js?v=20260816_11"></script>
+<script src="../js/azure-auth.js"></script>
+<script src="../js/theme.js"></script>
+<script src="components.js"></script>
+<script src="employee.js"></script>
+</body>
+</html>

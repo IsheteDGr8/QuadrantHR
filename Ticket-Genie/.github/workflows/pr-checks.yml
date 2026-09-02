@@ -1,0 +1,196 @@
+name: Pull Request Checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_live_ai_benchmarks:
+        description: "Run the paid live Azure AI benchmark suite"
+        required: true
+        type: boolean
+        default: false
+      live_cases_per_metric:
+        description: "Live cases per metric (5 recommended, 36 full suite)"
+        required: true
+        type: choice
+        options:
+          - "5"
+          - "10"
+          - "20"
+          - "36"
+        default: "5"
+  pull_request:
+    branches:
+      - '**'
+  push:
+    branches:
+      - main
+      - dev
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-checks:
+    name: Backend Quality and Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install .[backend,dev]
+
+      - name: Run Ruff checks
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Verify OpenAPI & Monitoring Specs Are Up to Date
+        run: |
+          python scripts/export_openapi.py
+          python scripts/generate_openapi_monitoring.py
+          if ! git diff --exit-code openapi/ artifacts/ terraform/openapi_alerts.tf; then
+            echo ""
+            echo "=========================================================================="
+            echo "❌ ERROR: OpenAPI Spec & Azure Monitor Artifacts are Out of Date!"
+            echo "=========================================================================="
+            echo "The FastAPI backend code was modified, but openapi/ specs or monitoring rules"
+            echo "were not updated to reflect your code changes."
+            echo ""
+            echo "🛠️  HOW TO FIX THIS:"
+            echo "1. Run the following commands locally on your branch:"
+            echo "   python scripts/export_openapi.py"
+            echo "   python scripts/generate_openapi_monitoring.py"
+            echo ""
+            echo "2. Stage, commit, and push the updated files:"
+            echo "   git add openapi/ artifacts/ terraform/openapi_alerts.tf"
+            echo "   git commit -m \"fix: update openapi spec and azure monitor rules\""
+            echo "   git push"
+            echo "=========================================================================="
+            exit 1
+          fi
+
+      - name: Run Pytest
+        run: pytest tests/
+
+  ai-benchmarks:
+    name: Live Azure AI Quality Benchmarks
+    if: github.event_name == 'workflow_dispatch' && inputs.run_live_ai_benchmarks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install benchmark dependencies
+        run: pip install .[backend]
+
+      - name: Run live AI quality gates
+        env:
+          GROUP1OPENAIENDPOINT: ${{ secrets.GROUP1OPENAIENDPOINT }}
+          GROUP1OPENAIAPIKEY: ${{ secrets.GROUP1OPENAIAPIKEY }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          AISEARCH_ENDPOINT: ${{ secrets.AISEARCH_ENDPOINT }}
+          AISEARCH_APIKEY: ${{ secrets.AISEARCH_APIKEY }}
+          AISEARCH_INDEX_NAME: ${{ secrets.AISEARCH_INDEX_NAME }}
+          USE_MOCK_AI: "false"
+        run: python scripts/run_live_ai_benchmarks.py --limit "${{ inputs.live_cases_per_metric }}"
+
+      - name: Publish benchmark summary
+        if: always()
+        run: cat artifacts/ai-benchmarks-live/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-ai-benchmark-results
+          path: artifacts/ai-benchmarks-live/
+
+  docker-checks:
+    name: Docker Build and Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Backend Docker image
+        run: docker build --target backend -t ticket-genie-backend-pr-check .
+
+      - name: Start Backend container
+        run: docker run -d --name ticket-genie-backend-pr-check -p 8000:8000 ticket-genie-backend-pr-check
+
+      - name: Wait for FastAPI health check
+        run: |
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://localhost:8000/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+
+      - name: Stop Backend container
+        if: always()
+        run: docker rm -f ticket-genie-backend-pr-check
+
+
+  terraform-checks:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Format and validate Terraform
+        working-directory: terraform
+        run: |
+          terraform init -backend=false
+          terraform fmt -check
+          terraform validate
+
+  svelte-checks:
+    name: Svelte Frontend Quality and Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run Svelte Linter & Diagnostic Checks
+        working-directory: frontend
+        run: npm run check
+
+      - name: Build Svelte Frontend
+        working-directory: frontend
+        run: npm run build

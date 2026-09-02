@@ -1,0 +1,21 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+*.pyc
+
+# Demo login DB - schema/seed lives in demo_login_db.py, the generated
+# file itself is local state, not source.
+backend/demo_login.db
+
+# Environment variables
+.env
+*.env
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfplan
+
+# macOS
+.DS_Store

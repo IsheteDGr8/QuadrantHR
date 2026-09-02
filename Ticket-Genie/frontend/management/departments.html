@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Departments & RBAC | TicketGenie</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    .page-padding { padding: 36px 0; width: 100%; margin: 0 auto; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .card { background: white; border: 1px solid #e1e6e2; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+    .card-title { font-size: 1.05rem; font-weight: 700; color: #28332c; margin-bottom: 16px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 0.82rem; font-weight: 600; color: #334155; margin-bottom: 6px; }
+    .form-group input, .form-group select { width: 100%; padding: 10px 14px; border: 1px solid #dfe5e1; border-radius: 8px; outline: none; font-size: 0.88rem; }
+    .btn-primary { width: 100%; padding: 10px; background: #6f4b82; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s ease; }
+    .btn-primary:hover { background: #533760; }
+    table { width: 100%; border-collapse: collapse; text-align: left; margin-top: 12px; }
+    th { font-size: 0.75rem; text-transform: uppercase; color: #64748b; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
+    td { font-size: 0.85rem; padding: 12px; border-bottom: 1px solid #f1f5f9; }
+  </style>
+</head>
+<body class="employee-page management-page">
+
+  <div id="shared-sidebar"></div>
+
+  <main class="main-content">
+    <div id="shared-topnav"></div>
+
+    <div class="page-padding">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><i class="fa-solid fa-building"></i> Create Department & Queue</div>
+          <form onsubmit="handleCreateDept(event)">
+            <div class="form-group">
+              <label>Department Name</label>
+              <input type="text" id="deptName" placeholder="e.g. Cybersecurity Operations" required />
+            </div>
+            <div class="form-group">
+              <label>Routing Queue Name</label>
+              <input type="text" id="queueName" placeholder="e.g. CyberSec - Triage" required />
+            </div>
+            <button type="submit" class="btn-primary">Create Department</button>
+          </form>
+
+          <div style="margin-top:24px;">
+            <div class="card-title" style="font-size:0.95rem;">Active Departments</div>
+            <table>
+              <thead>
+                <tr><th>Department</th><th>Queue Name</th></tr>
+              </thead>
+              <tbody id="deptTable">
+                <tr><td colspan="2">Loading departments...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><i class="fa-solid fa-key"></i> Manage Azure Object IDs & Roles (DB RBAC)</div>
+          <form onsubmit="handleAddUserObjId(event)">
+            <div class="form-group">
+              <label>Select Department</label>
+              <select id="deptSelect" required>
+                <option value="IT Team">IT Team</option>
+                <option value="HR Team">HR Team</option>
+                <option value="Accounting Team">Accounting Team</option>
+                <option value="Upper Executive Management">Upper Executive Management</option>
+                <option value="Workplace Operations Team">Workplace Operations Team</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Azure Object ID (GUID)</label>
+              <input type="text" id="azureObjId" placeholder="e.g. 00000000-0000-0000-0000-000000000000" required />
+            </div>
+            <div class="form-group">
+              <label>Assign Role</label>
+              <select id="userRoleSelect" onchange="toggleCustomRoleInput(this)">
+                <option value="Admin">Admin</option>
+                <option value="Ticketer">Ticketer</option>
+                <option value="Employee">Employee</option>
+              </select>
+              <input type="text" id="customRoleInput" placeholder="Enter custom role name" style="display:none; margin-top:8px;" />
+            </div>
+            <button type="submit" class="btn-primary" style="background:#533760;">Save Role & Department Mapping to DB</button>
+          </form>
+
+          <div style="margin-top:24px;">
+            <div class="card-title" style="font-size:0.95rem;">Mapped M365 / Azure Object IDs</div>
+            <table>
+              <thead>
+                <tr><th>Dept</th><th>Azure Object ID</th><th>Role</th><th>Action</th></tr>
+              </thead>
+              <tbody id="userObjTable">
+                <tr><td colspan="4">Loading object ID mappings...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/azure-auth.js"></script>
+  <script src="../js/theme.js"></script>
+  <script src="../js/script.js"></script>
+  <script src="components.js"></script>
+  <script src="management.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      loadDepartments();
+      loadDepartmentUsers();
+    });
+
+    function toggleCustomRoleInput(selectEl) {
+      const customInput = document.getElementById("customRoleInput");
+      if (selectEl.value === "__custom__") {
+        customInput.style.display = "block";
+        customInput.required = true;
+      } else {
+        customInput.style.display = "none";
+        customInput.required = false;
+      }
+    }
+
+    async function loadDepartments() {
+      try {
+        const res = await fetch("/api/admin/departments");
+        if (!res.ok) throw new Error("API unavailable");
+        const depts = await res.json();
+        const tbody = document.getElementById("deptTable");
+        tbody.innerHTML = depts.map(d => `<tr><td><strong>${d.name}</strong></td><td>${d.queue_name}</td></tr>`).join("");
+        
+        // Also populate department select dropdown
+        const deptSelect = document.getElementById("deptSelect");
+        if (depts && depts.length > 0) {
+          deptSelect.innerHTML = depts.map(d => `<option value="${d.name}">${d.name}</option>`).join("");
+        }
+      } catch (e) {
+        document.getElementById("deptTable").innerHTML = `<tr><td><strong>IT Team</strong></td><td>IT - Default Queue</td></tr><tr><td><strong>HR Team</strong></td><td>HR - Tier 1 Queue</td></tr>`;
+      }
+    }
+
+    async function loadDepartmentUsers() {
+      try {
+        const res = await fetch("/api/admin/departments/users");
+        if (!res.ok) throw new Error("API unavailable");
+        const users = await res.json();
+        const tbody = document.getElementById("userObjTable");
+        if (!users || users.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No object IDs mapped yet.</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = users.map(u => `
+          <tr>
+            <td>${u.department_name}</td>
+            <td><code>${u.azure_object_id}</code></td>
+            <td><strong>${u.role}</strong></td>
+            <td>
+              <button style="padding:4px 8px; background:#ef4444; color:white; border:none; border-radius:4px; font-size:0.75rem; cursor:pointer;" 
+                      onclick="handleRemoveUserObjId('${u.department_name}', '${u.azure_object_id}')">
+                Delete
+              </button>
+            </td>
+          </tr>
+        `).join("");
+      } catch (e) {
+        document.getElementById("userObjTable").innerHTML = `<tr><td>IT Team</td><td><code>8f72a6b2-0193-4a1d-91b6</code></td><td>Department Admin</td><td>-</td></tr>`;
+      }
+    }
+
+    async function handleCreateDept(e) {
+      e.preventDefault();
+      const name = document.getElementById("deptName").value;
+      const queue_name = document.getElementById("queueName").value;
+      try {
+        const res = await fetch("/api/admin/departments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, queue_name })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          alert(`Error (${res.status}): ${err.detail || 'Department creation failed'}`);
+          return;
+        }
+        alert(`Department '${name}' created!`);
+        loadDepartments();
+      } catch (err) {
+        alert("Unable to create department: " + err.message);
+      }
+    }
+
+    async function handleAddUserObjId(e) {
+      e.preventDefault();
+      const department_name = document.getElementById("deptSelect").value;
+      const azure_object_id = document.getElementById("azureObjId").value;
+      const roleSelect = document.getElementById("userRoleSelect").value;
+      const customRole = document.getElementById("customRoleInput").value;
+      const role = (roleSelect === "__custom__") ? customRole : roleSelect;
+
+      try {
+        const res = await fetch("/api/admin/departments/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ department_name, azure_object_id, role })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          alert(`Authorization Error (${res.status}): ${err.detail || 'Permission denied'}`);
+          return;
+        }
+        alert(`Successfully mapped Object ID '${azure_object_id}' to Role '${role}' in '${department_name}'!`);
+        document.getElementById("azureObjId").value = "";
+        loadDepartmentUsers();
+      } catch (err) {
+        alert("Failed to map user role: " + err.message);
+      }
+    }
+
+    async function handleRemoveUserObjId(department_name, azure_object_id) {
+      if (!confirm(`Are you sure you want to remove role mapping for Object ID '${azure_object_id}'?`)) return;
+      try {
+        const res = await fetch(`/api/admin/departments/users?department_name=${encodeURIComponent(department_name)}&azure_object_id=${encodeURIComponent(azure_object_id)}`, {
+          method: "DELETE"
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          alert(`Error (${res.status}): ${err.detail || 'Delete failed'}`);
+          return;
+        }
+        alert(`Removed mapping for Object ID '${azure_object_id}'`);
+        loadDepartmentUsers();
+      } catch (err) {
+        alert("Failed to remove mapping: " + err.message);
+      }
+    }
+  </script>
+</body>
+</html>

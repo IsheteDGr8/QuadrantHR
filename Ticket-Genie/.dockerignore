@@ -1,0 +1,12 @@
+.git
+.gitignore
+.github
+terraform/
+tests/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+README.md

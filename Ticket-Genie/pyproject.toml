@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ticket-genie"
+version = "0.1.0"
+description = "Ticket-Genie Application on Azure"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31.0",
+    "azure-identity>=1.15.0",
+    "azure-keyvault-secrets>=4.8.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+backend = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.28.0",
+    "pydantic>=2.6.0",
+    "python-dotenv>=1.0.0",
+    "azure-monitor-opentelemetry>=1.6.0",
+    "azure-monitor-query>=2.0.0",
+    "opentelemetry-instrumentation-fastapi>=0.45b0",
+    "pyyaml>=6.0.0",
+    "sqlalchemy>=2.0.0",
+    "pyodbc>=5.0.0",
+    "openai>=1.30.0",
+    "azure-search-documents>=11.4.0",
+    "azure-storage-blob>=12.19.0",
+    "python-multipart>=0.0.9",
+    "pypdf>=4.2.0",
+    "python-docx>=1.1.0",
+    "reportlab>=4.0.0",
+]
+dev = [
+    "ruff>=0.3.0",
+    "pytest>=8.0.0",
+    "httpx>=0.27.0",
+]
+
+
+# ----------------------------------------------------------------------
+# TOOL CONFIGURATIONS
+# ----------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+src = ["backend", "."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["B008", "E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "database", "models", "services", "telemetry"]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "backend"]
+
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+include = ["backend*"]

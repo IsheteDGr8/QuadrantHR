@@ -1,0 +1,573 @@
+import { useEffect, useState } from "react";
+import { TopBar } from "./components/TopBar";
+import { Filters } from "./components/Filters";
+import { UnifiedResults } from "./components/UnifiedResults";
+import { AskChat } from "./components/AskChat";
+import { ProfilePage, type ProfileStackEntry } from "./components/ProfilePage";
+import { GraphPage } from "./components/GraphPage";
+import { DashboardPage } from "./components/DashboardPage";
+import { ContinuityPage } from "./components/ContinuityPage";
+import { PendingApprovals } from "./components/PendingApprovals";
+import { PeopleAdminPage } from "./components/PeopleAdminPage";
+import { ReviewPage } from "./components/ReviewPage";
+import { PRDsPage } from "./components/PRDsPage";
+import { HelpMenu } from "./components/HelpMenu";
+import { LoginPage } from "./components/LoginPage";
+import { HelpOverlay } from "./components/HelpOverlay";
+import type { HelpState } from "./components/HelpOverlay";
+import { useDebouncedValue, useFocusHistory } from "./hooks";
+import { ApiError, UNAUTHORIZED_EVENT, getConversation, getMyCapabilities, unifiedSearch, type SearchFilters } from "./api";
+import { clearSession, loadSession, saveSession } from "./session";
+import { WORK_MODE_ROLES } from "./types";
+import type { Identity, InterpretationEntity, UnifiedSearchResponse, ViewMode } from "./types";
+
+type Mode = "profile" | "graphs" | "dashboard" | "continuity" | "review" | "admin" | "prds";
+
+function initialQuery(): string {
+  return new URLSearchParams(window.location.search).get("q") ?? "";
+}
+
+function profileIdFromPath(): string | null {
+  const m = window.location.pathname.match(/^\/profile\/([^/]+)$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function profileUrl(id: string): string {
+  return `/profile/${encodeURIComponent(id)}${window.location.search}`;
+}
+
+// Removing a chip edits the search box's text and re-searches -- no
+// per-entity removal endpoint, see SEARCH_RANKING_IMPLEMENTATION_PLAN.md
+// step 3's design note. `entity.text` is the exact substring the backend
+// matched, so it's excised verbatim rather than re-derived; the only
+// cleanup is collapsing the double space a middle-of-sentence removal
+// would otherwise leave behind.
+function removeEntityText(query: string, entityText: string): string {
+  const idx = query.indexOf(entityText);
+  if (idx === -1) return query;
+  return (query.slice(0, idx) + query.slice(idx + entityText.length)).replace(/ {2,}/g, " ").trim();
+}
+
+// Nothing below the gate ever sees a null identity, and <Directory> is
+// keyed by id: signing in as someone else remounts the whole app rather
+// than trying to reconcile one person's open profile stack, graph focus and
+// view mode with another person's permissions.
+export default function App() {
+  const [identity, setIdentity] = useState<Identity | null>(loadSession);
+
+  function signOut() {
+    clearSession();
+    setIdentity(null);
+    // Back to a bare URL, so the next person to sign in doesn't land on the
+    // previous one's profile before their own is loaded.
+    window.history.replaceState(null, "", "/");
+  }
+
+  // A 401 from any call means these headers are no longer accepted (the
+  // backend restarted into entra mode, say). Drop the session rather than
+  // leaving every panel rendering its own error.
+  useEffect(() => {
+    window.addEventListener(UNAUTHORIZED_EVENT, signOut);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, signOut);
+  }, []);
+
+  if (!identity) {
+    return (
+      <LoginPage
+        onLogin={(next) => {
+          saveSession(next);
+          // Point the URL at their own profile BEFORE mounting Directory --
+          // its initial state reads the path, so this is what makes signing
+          // in land you on your own page rather than on whatever the last
+          // session left in the address bar. Also drops a stale ?q=.
+          window.history.replaceState(null, "", `/profile/${encodeURIComponent(next.id)}`);
+          setIdentity(next);
+        }}
+      />
+    );
+  }
+  return <Directory key={identity.id} identity={identity} onSignOut={signOut} />;
+}
+
+interface DirectoryProps {
+  identity: Identity;
+  onSignOut: () => void;
+}
+
+function Directory({ identity, onSignOut }: DirectoryProps) {
+  // Work mode for the two roles that have one (matching the server's own
+  // default), employee mode for everyone else -- so the UI never opens
+  // claiming a mode the server isn't honouring.
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    WORK_MODE_ROLES.includes(identity.role) ? "work" : "employee",
+  );
+  const [mode, setMode] = useState<Mode>("profile");
+  const [help, setHelp] = useState<HelpState>("off");
+  const [query, setQuery] = useState(initialQuery);
+  const [filters, setFilters] = useState<SearchFilters>({});
+  const [profileStack, setProfileStack] = useState<ProfileStackEntry[]>(() => {
+    // The path wins on a refresh or a shared deep link; signing in has
+    // already rewritten it to this person's own profile (see App above).
+    const urlId = profileIdFromPath();
+    return urlId ? [{ id: urlId, name: "" }] : [{ id: identity.id, name: identity.name }];
+  });
+  const profileId = profileStack[profileStack.length - 1].id;
+  // The graph's focus person, with a back/forward trail behind it. Home is
+  // the signed-in identity: "recentre on me" is the one destination that is
+  // always meaningful, whoever you have wandered off to.
+  const graphFocus = useFocusHistory(identity.id);
+  // Whether to OFFER the Dashboard tab. HR gets it in work mode, the same
+  // gate Continuity/Review/Admin carry; a manager gets it in either mode,
+  // because their dashboard is their own reporting line and that is not a
+  // privileged lens -- app/permissions.py already grants a manager their
+  // reports' training status, which is the only non-BASE_FIELDS data on it.
+  //
+  // This is a decision about what to SHOW. The backend resolves the scope
+  // from the caller regardless (app/analytics.py's resolve_scope) and 403s
+  // anyone with no dashboard of their own, including a "manager" role claim
+  // with nobody reporting to them -- so a wrong guess here can only ever
+  // render a tab that then says so, never open one that should be shut.
+  const canSeeDashboard =
+    (identity.role === "hr" && viewMode === "work") || identity.role === "manager";
+
+  // Build Team's gate, resolved by the SERVER rather than guessed from the
+  // role the way canSeeDashboard above is. It has to be: a "manager" claim
+  // with nobody reporting to them cannot build a team, and the role alone
+  // cannot tell. Lives here rather than in GraphPage because the guided
+  // tour needs the same answer -- a tour step whose target is hidden is a
+  // dead step, and two independent probes could disagree with each other.
+  const [canBuildTeam, setCanBuildTeam] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    getMyCapabilities(identity, viewMode, controller.signal)
+      .then((c) => { if (!cancelled) setCanBuildTeam(c.can_build_team); })
+      // A failed probe hides the feature rather than offering it. The
+      // endpoint 403s regardless, so guessing "yes" only buys a later error.
+      .catch(() => { if (!cancelled) setCanBuildTeam(false); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [identity, viewMode]);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
+  const [savedSearch, setSavedSearch] = useState<{ query: string; filters: SearchFilters } | null>(null);
+
+  // Normalize the URL to reflect the initial profile on first mount, without
+  // creating a spurious history entry.
+  useEffect(() => {
+    window.history.replaceState({ stack: profileStack }, "", profileUrl(profileStack[profileStack.length - 1].id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Browser back/forward restores whichever stack was pushed at that point
+  // in history; a bare URL with no app state (e.g. a fresh navigation from
+  // outside) falls back to a single-entry stack for that id.
+  useEffect(() => {
+    function onPopState(e: PopStateEvent) {
+      const state = e.state as { stack?: ProfileStackEntry[] } | null;
+      if (state?.stack && state.stack.length > 0) {
+        setProfileStack(state.stack);
+        setMode("profile");
+      } else {
+        const urlId = profileIdFromPath();
+        if (urlId) {
+          setProfileStack([{ id: urlId, name: "" }]);
+          setMode("profile");
+        }
+      }
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  function goToStack(nextStack: ProfileStackEntry[]) {
+    setProfileStack(nextStack);
+    window.history.pushState({ stack: nextStack }, "", profileUrl(nextStack[nextStack.length - 1].id));
+  }
+
+  function pushProfile(id: string, name: string) {
+    goToStack([...profileStack, { id, name }]);
+  }
+
+  function resetProfile(id: string, name: string) {
+    goToStack([{ id, name }]);
+  }
+
+  function backOneProfile() {
+    if (profileStack.length > 1) goToStack(profileStack.slice(0, -1));
+  }
+
+  function jumpToProfileIndex(index: number) {
+    if (index < profileStack.length - 1) goToStack(profileStack.slice(0, index + 1));
+  }
+
+  function backToSearch() {
+    if (!savedSearch) return;
+    setQuery(savedSearch.query);
+    setFilters(savedSearch.filters);
+    setSavedSearch(null);
+  }
+
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const debouncedFilters = useDebouncedValue(filters, 300);
+
+  const [response, setResponse] = useState<UnifiedSearchResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // The caller's "search" surface conversation id, owned here (not inside
+  // AskChat) because BOTH an assisted search-bar answer and an AskChat
+  // follow-up write to the same server-side conversation (see
+  // app.unified_search._assisted). If only AskChat tracked this, every
+  // assisted search would silently open-and-abandon a fresh one-turn
+  // conversation, and GET /conversations/search's "most recent" would
+  // usually return that abandoned thread instead of AskChat's own —
+  // rehydration would show the wrong history. Fetched once on mount so
+  // even the FIRST assisted call after a reload continues the existing
+  // thread rather than starting a new one.
+  const [searchConversationId, setSearchConversationId] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getConversation(identity, "search", viewMode).then((res) => {
+      if (!cancelled) setSearchConversationId(res.conversation_id);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity]);
+
+  const hasQuery = debouncedQuery.trim() !== "" || Object.keys(debouncedFilters).length > 0;
+
+  // Keeps the URL shareable/bookmarkable (?q=...) without spamming browser
+  // history on every keystroke -- replaceState, not pushState. A copied
+  // link at any point in time reproduces the same search.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (debouncedQuery.trim()) params.set("q", debouncedQuery.trim());
+    else params.delete("q");
+    const qs = params.toString();
+    window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+  }, [debouncedQuery]);
+
+  useEffect(() => {
+    if (!hasQuery) {
+      setResponse(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    unifiedSearch(
+      identity, { q: debouncedQuery.trim() || undefined, ...debouncedFilters }, viewMode,
+      searchConversationId, controller.signal,
+    )
+      .then((res) => {
+        setResponse(res);
+        setLoading(false);
+        // Absent (not null) on a direct-mode answer -- no model call, no
+        // conversation touched, so the existing id must survive untouched.
+        if (res.conversation_id !== undefined) setSearchConversationId(res.conversation_id ?? null);
+      })
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        setError(e instanceof ApiError ? e.message : "Unknown error");
+        setLoading(false);
+      });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery, debouncedFilters, identity, viewMode, retryToken]);
+
+  function jumpToCard(id: string) {
+    const el = document.getElementById(`person-card-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFlashId(id);
+    window.setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 1200);
+  }
+
+  return (
+    <div className="app">
+      <TopBar
+        query={query}
+        onQueryChange={setQuery}
+        identity={identity}
+        viewMode={viewMode}
+        onViewModeChange={(next) => {
+          setViewMode(next);
+          // Review is one of HR's WORK-mode surfaces (it edits real
+          // records) -- it doesn't exist in employee mode. If it was open
+          // when the toggle switched away from work mode, there'd be no tab
+          // left to click back out of it.
+          if (next !== "work" && mode === "review") setMode("profile");
+          // Admin is HR's work-mode surface for the same reason.
+          if (next !== "work" && mode === "admin") setMode("profile");
+          // HR's dashboard is an org-wide view, so it belongs to work mode
+          // for the same reason Continuity does -- and the server refuses
+          // it in employee mode regardless. A manager keeps theirs: their
+          // scope is their own team either way.
+          if (next !== "work" && mode === "dashboard" && identity.role === "hr") setMode("profile");
+          // So is Continuity: employee mode is "what an ordinary colleague
+          // sees", and work-authorization review dates are precisely what an
+          // ordinary colleague does not see. The server refuses these calls
+          // in employee mode (app.continuity._require_hr) -- this only stops
+          // the UI from asking.
+          if (next !== "work" && mode === "continuity") setMode("profile");
+          // PRDs is an HR work-mode surface too -- same reasoning as Review.
+          if (next !== "work" && mode === "prds") setMode("profile");
+        }}
+        onSignOut={onSignOut}
+        onOpenPerson={(id, name) => {
+          resetProfile(id, name);
+          setMode("profile");
+          setQuery("");
+        }}
+        helpSlot={
+          <HelpMenu
+            state={help}
+            onStart={(next) => setHelp(next)}
+            onExit={() => setHelp("off")}
+          />
+        }
+      />
+
+      <PendingApprovals identity={identity} viewMode={viewMode} />
+
+      <div className="tabs" role="tablist" aria-label="Section" data-help="tabs">
+        <button
+          role="tab"
+          aria-selected={mode === "profile"}
+          className={`tab ${mode === "profile" ? "active" : ""}`}
+          onClick={() => {
+            setMode("profile");
+            setQuery("");
+            setSavedSearch(null);
+            resetProfile(identity.id, identity.name);
+          }}
+        >
+          Profile
+        </button>
+        <button
+          role="tab"
+          aria-selected={mode === "graphs"}
+          className={`tab ${mode === "graphs" ? "active" : ""}`}
+          onClick={() => {
+            setMode("graphs");
+            setQuery("");
+          }}
+        >
+          Graphs
+        </button>
+        {canSeeDashboard && (
+          <button
+            role="tab"
+            aria-selected={mode === "dashboard"}
+            className={`tab ${mode === "dashboard" ? "active" : ""}`}
+            onClick={() => {
+              setMode("dashboard");
+              setQuery("");
+            }}
+          >
+            Dashboard
+          </button>
+        )}
+        {identity.role === "hr" && viewMode === "work" && (
+          <button
+            role="tab"
+            aria-selected={mode === "continuity"}
+            className={`tab ${mode === "continuity" ? "active" : ""}`}
+            onClick={() => {
+              setMode("continuity");
+              setQuery("");
+            }}
+          >
+            Continuity
+          </button>
+        )}
+        {identity.role === "hr" && viewMode === "work" && (
+          <button
+            role="tab"
+            aria-selected={mode === "review"}
+            className={`tab ${mode === "review" ? "active" : ""}`}
+            onClick={() => {
+              setMode("review");
+              setQuery("");
+            }}
+          >
+            Review
+          </button>
+        )}
+        {identity.role === "hr" && viewMode === "work" && (
+          <button
+            role="tab"
+            aria-selected={mode === "admin"}
+            className={`tab ${mode === "admin" ? "active" : ""}`}
+            onClick={() => {
+              setMode("admin");
+              setQuery("");
+            }}
+          >
+            Admin
+          </button>
+        )}
+        {identity.role === "hr" && viewMode === "work" && (
+          <button
+            role="tab"
+            aria-selected={mode === "prds"}
+            className={`tab ${mode === "prds" ? "active" : ""}`}
+            onClick={() => {
+              setMode("prds");
+              setQuery("");
+            }}
+          >
+            PRDs
+          </button>
+        )}
+      </div>
+
+      <main className="content">
+        {hasQuery ? (
+          <>
+            <div data-help="filters">
+              <Filters filters={filters} onChange={setFilters} />
+            </div>
+            <div data-help="results">
+            <UnifiedResults
+              loading={loading}
+              error={error}
+              response={response}
+              hasQuery={hasQuery}
+              flashId={flashId}
+              onSelect={(id, name) => {
+                setSavedSearch({ query: debouncedQuery, filters: debouncedFilters });
+                resetProfile(id, name);
+                setMode("profile");
+                setQuery("");
+              }}
+              onJumpToCard={jumpToCard}
+              onExampleClick={(text) => setQuery(text)}
+              onRetry={() => setRetryToken((t) => t + 1)}
+              onAddToFilter={(skill, level) => setFilters((f) => ({ ...f, skill, level: level ?? f.level }))}
+              onRemoveEntity={(entity: InterpretationEntity) => setQuery((q) => removeEntityText(q, entity.text))}
+            />
+            {/* Available under every search, direct or assisted -- a bare
+                name/skill match still deserves a way to ask a follow-up
+                ("which of those are in Bangalore?") without retyping the
+                whole thing as a question. This costs nothing extra for a
+                direct search: the model is only ever called once the box
+                is actually used, so a plain lookup stays exactly as free
+                as it is today (see unified_search.py's
+                test_direct_mode_never_calls_the_model — untouched by
+                this). Remounts (key=debouncedQuery) on a brand new
+                question, so an old conversation never appears to answer
+                a different one. */}
+            {!loading && !error && response !== null && (
+              <AskChat
+                key={debouncedQuery} identity={identity} viewMode={viewMode}
+                conversationId={searchConversationId} onConversationId={setSearchConversationId}
+                contextPeople={response?.results ?? []}
+                onSelect={(id, name) => {
+                  setSavedSearch({ query: debouncedQuery, filters: debouncedFilters });
+                  resetProfile(id, name);
+                  setMode("profile");
+                  setQuery("");
+                }}
+                onAddToFilter={(skill, level) => setFilters((f) => ({ ...f, skill, level: level ?? f.level }))}
+              />
+            )}
+            </div>
+          </>
+        ) : mode === "profile" ? (
+          <div data-help="profile">
+          <ProfilePage
+            personId={profileId}
+            identity={identity}
+            viewMode={viewMode}
+            stack={profileStack}
+            onNavigate={pushProfile}
+            onBack={backOneProfile}
+            onBreadcrumb={jumpToProfileIndex}
+            onBackToSearch={savedSearch ? backToSearch : undefined}
+          />
+          </div>
+        ) : mode === "graphs" ? (
+          <div data-help="graphs">
+          <GraphPage
+            canBuildTeam={canBuildTeam}
+            identity={identity}
+            viewMode={viewMode}
+            focus={graphFocus}
+            onOpenProfile={(id, name) => {
+              resetProfile(id, name);
+              setMode("profile");
+            }}
+          />
+          </div>
+        ) : mode === "dashboard" && canSeeDashboard ? (
+          <div data-help="dashboard">
+            <DashboardPage
+              identity={identity}
+              viewMode={viewMode}
+              onOpenProfile={(id, name) => {
+                resetProfile(id, name);
+                setMode("profile");
+              }}
+              onOpenGraph={(employeeId) => {
+                // Recorded as a navigation, not a reset: arriving in the
+                // graph from a dashboard drill-down should still be
+                // reversible with Back.
+                graphFocus.go(employeeId);
+                setMode("graphs");
+              }}
+            />
+          </div>
+        ) : mode === "continuity" && identity.role === "hr" && viewMode === "work" ? (
+          <div data-help="continuity"><ContinuityPage identity={identity} viewMode={viewMode} /></div>
+        ) : mode === "review" && identity.role === "hr" && viewMode === "work" ? (
+          <div data-help="review"><ReviewPage identity={identity} viewMode={viewMode} /></div>
+        ) : mode === "admin" && identity.role === "hr" && viewMode === "work" ? (
+          <div data-help="admin">
+            <PeopleAdminPage
+              identity={identity} viewMode={viewMode}
+              onOpenPerson={(id, name) => {
+                resetProfile(id, name);
+                setMode("profile");
+              }}
+            />
+          </div>
+        ) : mode === "prds" && identity.role === "hr" && viewMode === "work" ? (
+          <div data-help="prds"><PRDsPage identity={identity} viewMode={viewMode} /></div>
+        ) : null}
+      </main>
+
+      <HelpOverlay
+        state={help}
+        // Mirrors the tab bar's own render conditions above -- if a tab
+        // isn't there, the tour must not walk to it.
+        capabilities={{ build_team: canBuildTeam }}
+        availableModes={[
+          "profile",
+          "graphs",
+          ...(canSeeDashboard ? (["dashboard"] as const) : []),
+          ...(identity.role === "hr" && viewMode === "work" ? (["continuity"] as const) : []),
+          ...(identity.role === "hr" && viewMode === "work" ? (["review"] as const) : []),
+          ...(identity.role === "hr" && viewMode === "work" ? (["admin"] as const) : []),
+          ...(identity.role === "hr" && viewMode === "work" ? (["prds"] as const) : []),
+        ]}
+        onExit={() => setHelp("off")}
+        onRequestMode={(m) => {
+          // Clearing the query matters as much as setting the mode: the
+          // content area renders SEARCH RESULTS whenever hasQuery is true,
+          // whatever `mode` says (see the ternary above). Setting mode
+          // alone left the tour narrating the Graphs tabs while the page
+          // still showed a result list, and the step's target never
+          // existed. The real tab buttons clear the query for the same
+          // reason -- this just does what clicking them does.
+          setMode(m as Mode);
+          setQuery("");
+        }}
+      />
+    </div>
+  );
+}

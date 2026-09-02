@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Ticket | TicketGenie Management</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <style>
+    .page-header { width: 100%; max-width: 800px; margin-bottom: 24px; margin-top: 24px; }
+    .page-header h1 { font-size: 1.75rem; color: #111827; font-weight: 600; }
+    .page-header p { color: #6b7280; font-size: 0.95rem; margin-top: 4px; }
+
+    .form-card { background-color: #ffffff; width: 100%; max-width: 800px; padding: 32px; border-radius: 12px; border: 1px solid #e1e6e2; box-shadow: 0 4px 6px rgba(0,0,0,0.02); margin-bottom: 40px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+    .full-width { grid-column: span 2; }
+
+    .input-group { display: flex; flex-direction: column; gap: 8px; }
+    .input-group label { font-size: 0.85rem; font-weight: 600; color: #374151; }
+    .input-group input, .input-group select, .input-group textarea { padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border 0.2s; font-family: inherit; }
+    .input-group input:focus, .input-group select:focus, .input-group textarea:focus { border-color: #533760; }
+    .input-group textarea { resize: vertical; min-height: 120px; }
+
+    .btn-submit { background-color: #2b1b36; color: #ffffff; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; font-size: 1rem; width: 100%; transition: background 0.2s; }
+    .btn-submit:hover { background-color: #533760; }
+  </style>
+</head>
+<body class="employee-page management-page">
+
+  <div id="shared-sidebar"></div>
+
+  <main class="main-content">
+    <div id="shared-topnav"></div>
+    
+    <header class="page-header">
+      <h1>Submit Ticket</h1>
+      <p>Log a new support request for routing across IT, HR, or Management queues.</p>
+    </header>
+
+    <div class="form-card">
+      <form id="createTicketForm">
+        <div class="form-grid">
+          <div class="input-group full-width">
+            <label for="ticketTitle">Request Title</label>
+            <input type="text" id="ticketTitle" placeholder="e.g. Hardware Request for New Engineer" required>
+          </div>
+
+          <div class="input-group">
+            <label for="targetDepartment">Department Queue</label>
+            <select id="targetDepartment">
+              <option value="IT Operations">IT Operations</option>
+              <option value="HR & Workforce">HR & Workforce</option>
+              <option value="Executive Management">Executive Management</option>
+              <option value="Facilities">Facilities</option>
+            </select>
+          </div>
+
+          <div class="input-group">
+            <label for="priorityLevel">Priority Level</label>
+            <select id="priorityLevel">
+              <option value="Low">Low</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="High">High</option>
+              <option value="Critical">Critical</option>
+            </select>
+          </div>
+
+          <div class="input-group full-width">
+            <label for="ticketDescription">Detailed Description</label>
+            <textarea id="ticketDescription" placeholder="Provide clear description, error context, or budget details..." required></textarea>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit"><i class="fa-solid fa-paper-plane"></i> Log Request</button>
+      </form>
+    </div>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/azure-auth.js"></script>
+  <script src="../js/theme.js"></script>
+  <script src="../js/script.js"></script>
+  <script src="components.js"></script>
+  <script src="management.js"></script>
+  <script>
+    let isSubmittingManagementTicket = false;
+    const mgmtForm = document.getElementById('createTicketForm');
+    if (mgmtForm) {
+      mgmtForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        if (isSubmittingManagementTicket) return;
+
+        const title = document.getElementById('ticketTitle')?.value.trim();
+        const department = document.getElementById('targetDepartment')?.value;
+        const priority = document.getElementById('priorityLevel')?.value;
+        const description = document.getElementById('ticketDescription')?.value.trim();
+
+        if (!title || !description) {
+          if (typeof showNotification === 'function') {
+            showNotification('Please fill in the title and description.', 'error');
+          } else alert('Please fill in the title and description.');
+          return;
+        }
+
+        const submitBtn = mgmtForm.querySelector('button[type="submit"]');
+        isSubmittingManagementTicket = true;
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Logging Request...';
+        }
+
+        try {
+          const createFn = window.apiCreateTicket || apiCreateTicket;
+          const created = await createFn({ title, department, category: department || 'General', priority, description });
+          if (typeof showNotification === 'function') {
+            showNotification(`Ticket #${created?.id || ''} created successfully! Redirecting...`, 'success');
+          }
+          setTimeout(() => { window.location.href = 'inbox.html'; }, 1200);
+        } catch (err) {
+          isSubmittingManagementTicket = false;
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Log Request';
+          }
+          console.error("Management ticket creation error:", err);
+          if (typeof showNotification === 'function') {
+            showNotification(err.message || 'Failed to submit ticket.', 'error');
+          } else alert(err.message || 'Failed to submit ticket.');
+        }
+      });
+    }
+  </script>
+</body>
+</html>

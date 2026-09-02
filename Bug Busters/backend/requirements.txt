@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+openai
+azure-storage-blob
+azure-identity
+azure-search-documents
+pytest
+httpx
+python-docx
+reportlab
+pypdf
+python-multipart

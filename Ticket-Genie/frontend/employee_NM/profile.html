@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile & Credentials | TicketGenie Enterprise</title>
+    <link rel="stylesheet" href="../css/employee-style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f8fafc;
+            color: #0f172a;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .main-content {
+            flex-grow: 1;
+            height: 100vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            background: #f8fafc;
+        }
+        .topbar {
+            height: 75px;
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 32px;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<aside class="sidebar">
+    <div class="brand">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="brand-icon">
+                <i class="fa-solid fa-ticket"></i>
+            </div>
+            <div>
+                <h2>TicketGenie</h2>
+                <span>Employee Portal</span>
+            </div>
+        </div>
+    </div>
+
+    <nav class="navigation">
+        <div style="height: 1px; background: #402b4a; margin: 6px 10px 4px 10px;"></div>
+        <div class="nav-title" style="font-size: 15px !important; font-weight: 700 !important; letter-spacing: 0.8px !important;">Workspace</div>
+        <a href="index.html" class="nav-item">
+            <i class="fa-solid fa-house"></i><span>Dashboard</span>
+        </a>
+        <a href="new-request.html" class="nav-item">
+            <i class="fa-solid fa-plus"></i><span>Create Request</span>
+        </a>
+        <a href="my-tickets.html" class="nav-item">
+            <i class="fa-solid fa-ticket"></i><span>My Requests</span>
+        </a>
+        
+
+        <div style="height: 1px; background: #402b4a; margin: 18px 10px 4px 10px;"></div>
+        <div class="nav-title" style="font-size: 15px !important; font-weight: 700 !important; letter-spacing: 0.8px !important;">Time Off & Company</div>
+        <a href="announcements.html" class="nav-item">
+            <i class="fa-solid fa-bullhorn"></i><span>Announcements</span>
+        </a>
+
+        <div style="height: 1px; background: #402b4a; margin: 18px 10px 4px 10px;"></div>
+        <div class="nav-title" style="font-size: 15px !important; font-weight: 700 !important; letter-spacing: 0.8px !important;">Resources</div>
+        <a href="knowledge-base.html" class="nav-item">
+            <i class="fa-solid fa-book-open"></i><span>Knowledge Base</span>
+        </a>
+        <a href="notifications.html" class="nav-item">
+            <i class="fa-solid fa-bell"></i><span>Notifications</span><span class="notification-count">3</span>
+        </a>
+        <a href="profile.html" class="nav-item">
+            <i class="fa-solid fa-user-gear"></i><span>Profile & Credentials</span>
+        </a>
+    </nav>
+
+    <div class="sidebar-bottom">
+        <div style="height: 1px; background: #402b4a; margin: 15px 0;"></div>
+        <a href="../index.html" class="nav-item" style="color: #cbd5e1;">
+            <i class="fa-solid fa-arrow-left" style="color: #94a3b8;"></i><span>Go Back</span>
+        </a>
+    </div>
+</aside>
+<main class="main-content">
+    <header class="topbar">
+        <div class="header-left" style="display: flex; align-items: center; gap: 20px;">
+            <button class="icon-button" id="sidebarToggle" type="button" aria-label="Toggle Sidebar" onclick="toggleEmployeeSidebar(event)">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+
+        <div class="topbar-actions" style="display: flex; align-items: center; gap: 16px;">
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" placeholder="Search..." id="globalSearch">
+                <span class="shortcut">⌘ K</span>
+            </div>
+            <button id="myCustomDarkToggle" class="icon-button" aria-label="Toggle Dark Mode" onclick="toggleEmployeeDarkMode(event)" style="position: relative; display: flex; align-items: center; justify-content: center; width: 37px; height: 37px;">
+    <!-- Moon SVG for Light Mode -->
+    <svg id="customMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+    <!-- Sun SVG for Dark Mode -->
+    <svg id="customSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+</button>
+
+            <!-- Profile Dropdown Menu with Green Profile Icon -->
+            <div style="position: relative; display: inline-block;">
+    <button id="profileMenuBtn" type="button" class="icon-button" aria-label="Profile Menu" style="width: 38px; height: 38px; border-radius: 50%; background: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; transition: all 0.2s ease;" onmouseover="this.style.background='#e9d5ff'; this.style.borderColor='#c084fc';" onmouseout="this.style.background='#f3e8ff'; this.style.borderColor='#d8b4fe';">
+        <i class="fa-solid fa-user"></i>
+    </button>
+    
+    <div id="profileDropdown" style="display: none; position: absolute; right: 0; top: 46px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.08); width: 240px; z-index: 1000; overflow: hidden; padding: 6px;">
+    <!-- User Info Header -->
+
+    <!-- View Switcher Section -->
+    <div style="padding: 4px 8px; font-size: 10px; color: #94a3b8; font-weight: 700; letter-spacing: 0.5px;">SWITCH VIEW</div>
+    <button type="button" onclick="switchPortalView('employee')" style="width: 100%; text-align: left; background: transparent; border: none; padding: 9px 12px; font-size: 12px; color: #334155; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 10px; border-radius: 6px; transition: background 0.15s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        <i class="fa-solid fa-user" style="color: #9333ea; width: 16px; text-align: center;"></i> Employee View
+    </button>
+    <button type="button" onclick="switchPortalView('management')" style="width: 100%; text-align: left; background: transparent; border: none; padding: 9px 12px; font-size: 12px; color: #334155; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 10px; border-radius: 6px; transition: background 0.15s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        <i class="fa-solid fa-user-shield" style="color: #c026d3; width: 16px; text-align: center;"></i> Management View
+    </button>
+
+    <!-- Divider & Go Back -->
+    <div style="height: 1px; background: #f1f5f9; margin: 6px 0;"></div>
+    <a href="../index.html" style="width: 100%; text-align: left; background: transparent; border: none; padding: 9px 12px; font-size: 12px; color: #334155; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 10px; border-radius: 6px; text-decoration: none; transition: background 0.15s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        <i class="fa-solid fa-arrow-left" style="color: #64748b; width: 16px; text-align: center;"></i> Go Back
+    </a>
+</div>
+</div>
+        </div>
+    </header>
+
+    <section class="section" style="padding-top: 32px; padding-left: 36px; padding-right: 36px; box-sizing: border-box;">
+        <div style="margin-bottom: 32px; padding-top: 8px;">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 0;">
+                <div>
+                    <h3 style="font-size: 22px; color: #1e293b; margin-bottom: 4px; font-weight: 700;">Profile & Credentials</h3>
+                    <p style="font-size: 14px; color: #64748b; margin: 0;">Manage your Entra ID credentials, profile photo, and account preferences.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Large Main Profile Container with Purple & Gold Styling -->
+        <div style="background: #ffffff; border: 1px solid #e1e6e2; border-left: 4px solid #d4a359; border-radius: 8px; padding: 32px; box-shadow: 0 4px 15px rgba(43, 27, 54, 0.03);">
+            
+            <!-- Profile Header & Picture Upload Section -->
+            <div style="display: flex; align-items: center; gap: 24px; padding-bottom: 28px; border-bottom: 1px solid #f1f5f9; margin-bottom: 28px; flex-wrap: wrap;">
+                <div style="position: relative;">
+                    <div id="profileAvatarPreview" style="width: 90px; height: 90px; border-radius: 50%; background: #ac167f; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; overflow: hidden; border: 3px solid #d8b4fe;">
+                        <i class="fa-solid fa-user" id="avatarIcon"></i>
+                        <img id="avatarImg" src="" alt="Profile Picture" style="width: 100%; height: 100%; object-fit: cover; display: none;">
+                    </div>
+                </div>
+                <div>
+                    <h4 style="font-size: 20px; color: #1e293b; margin: 0 0 4px 0; font-weight: 700;">Alex Morgan</h4>
+                    <p style="font-size: 14px; color: #64748b; margin: 0 0 8px 0;">Enterprise IT Operations</p>
+                    <span style="background: #fef9e7; color: #b8860b; border: 1px solid #fde047; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 12px;"><i class="fa-solid fa-lock" style="margin-right: 4px;"></i> Entra ID Read-Only Profile</span>
+                </div>
+            </div>
+
+            <!-- Profile Details Form (Read Only) -->
+            <form id="profileForm" style="display: flex; flex-direction: column; gap: 20px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 6px;">Full Name</label>
+                        <input type="text" value="Alex Morgan" disabled readonly style="width: 100%; padding: 10px 14px; border: 1px solid #e1e6e2; background: #f8fafc; border-radius: 6px; font-size: 13px; color: #475569; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 6px;">Corporate Email (Entra ID)</label>
+                        <input type="email" value="alex.morgan@ticketgenie.enterprise" disabled readonly style="width: 100%; padding: 10px 14px; border: 1px solid #e1e6e2; background: #f8fafc; border-radius: 6px; font-size: 13px; color: #475569; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 6px;">Department</label>
+                        <input type="text" value="Enterprise Engineering & IT" disabled readonly style="width: 100%; padding: 10px 14px; border: 1px solid #e1e6e2; background: #f8fafc; border-radius: 6px; font-size: 13px; color: #475569; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 6px;">Office Location</label>
+                        <input type="text" value="Building A, Floor 3 (Workspace #402)" disabled readonly style="width: 100%; padding: 10px 14px; border: 1px solid #e1e6e2; background: #f8fafc; border-radius: 6px; font-size: 13px; color: #475569; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div>
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 6px;">Bio / Professional Summary</label>
+                    <textarea rows="3" disabled readonly style="width: 100%; padding: 10px 14px; border: 1px solid #e1e6e2; background: #f8fafc; border-radius: 6px; font-size: 13px; color: #475569; box-sizing: border-box; resize: none;">Leading front-end development workflows, UI/UX consistency, and TicketGenie enterprise integrations.</textarea>
+                </div>
+            </form>
+        </div>
+    </section>
+</main>
+
+<!-- Genie AI Floating Button & Drawer -->
+<button class="genie-button" id="genieButton" type="button">
+    <i class="fa-solid fa-wand-magic-sparkles"></i>
+    <span>Ask Genie</span>
+</button>
+
+<div class="genie-chat" id="genieChat">
+    <div class="genie-chat-header">
+        <div class="genie-header-info">
+            <div class="genie-avatar"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <div><strong>Genie AI</strong><span><span class="genie-status-dot"></span> Online</span></div>
+        </div>
+        <button class="genie-close" id="closeGenieButton" type="button"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="genie-messages" id="genieMessages">
+        <div class="genie-message">
+            <div class="genie-message-avatar"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <div class="genie-bubble">Need help updating your credentials or syncing Entra ID details?</div>
+        </div>
+    </div>
+    <div class="genie-input-area">
+        <input type="text" id="genieInput" placeholder="Ask a question..." autocomplete="off">
+        <button id="genieSendButton" type="button"><i class="fa-solid fa-arrow-up"></i></button>
+    </div>
+    <div class="genie-disclaimer">Genie may occasionally provide inaccurate information.</div>
+</div>
+
+<script>
+function switchPortalView(viewType) {
+    if (typeof showNotification === 'function') {
+        showNotification(viewType === 'management' ? 'Switched to Management View mode.' : 'Switched to Employee View mode.', 'info');
+    }
+}
+
+function handleSignOut(event) {
+    if (event) event.preventDefault();
+    window.location.href = '../index.html';
+}
+</script>
+<script src="../js/api.js"></script>
+<script src="components.js?v=20260816_7"></script>
+<script src="../js/employee-script.js?v=20260816_7"></script>
+</body>
+</html>

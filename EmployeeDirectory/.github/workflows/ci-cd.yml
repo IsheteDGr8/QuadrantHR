@@ -1,0 +1,511 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # golden-eval is dispatched through this, not through push/pull_request --
+  # see that job's comment for why.
+  workflow_dispatch: {}
+
+# Two pushes a minute apart used to produce two runs racing each other to the
+# same App Service, each deploying with `--clean true`, and whichever finished
+# LAST won regardless of which commit was newer. That's how seed_training.py
+# went missing from wwwroot: the run that added it to the zip finished first,
+# and the older run's zip -- built before that change -- landed on top and
+# wiped it out. Silent, and indistinguishable from "the deploy hasn't finished
+# yet" from outside.
+#
+# Grouped per ref so main and a PR branch never queue behind each other.
+#
+# cancel-in-progress stays FALSE deliberately. Cancelling mid-run is the usual
+# choice for CI, but this workflow's tail is `az webapp deploy` followed by an
+# alembic-at-startup restart -- killing that partway can leave the App Service
+# with a half-extracted wwwroot or a half-applied migration. Queueing costs a
+# few minutes; a torn deploy costs an outage.
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.14"
+  WEBAPP_NAME: Tempest34
+  RESOURCE_GROUP: Tempest
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Always runs, on every push and PR. Nothing downstream proceeds unless
+  # this passes.
+  # ---------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run pytest
+        run: pytest
+
+      # This no longer GATES anything -- golden-eval is manual now (see that
+      # job). It stays because making the eval manual otherwise loses the
+      # only automatic signal that a change was one worth evaluating, and
+      # "remember to run the eval" is exactly the kind of thing nobody
+      # remembers. Now it annotates the run instead of gating a job: an
+      # AI-touching PR says so in its own checks summary.
+      #
+      # Deliberately an ALLOW-EVERYTHING-THEN-SUBTRACT list, not the curated
+      # include list this used to be. That version named four modules
+      # (tool_calling, search_client, directory_tools, people) and had
+      # already drifted: get_org_chain is a scored tool and app/org_chart.py
+      # was never listed, app/permissions.py decides what every scored
+      # result contains and was never listed, and run_golden_eval.py imports
+      # app/auth.py and app/db.py directly. A curated include list fails
+      # OPEN -- a file nobody remembered to add means no signal, which looks
+      # identical to "nothing AI-relevant changed". Subtracting instead
+      # means a new module is covered by default and the failure mode of
+      # forgetting to update this block is an advisory that fires when it
+      # didn't strictly need to.
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ai:
+              - 'app/**'
+              # Notifications and certification tracking are reachable from a
+              # profile read but contribute nothing the golden set scores --
+              # no question asks about a reminder or a course status.
+              - '!app/notifications.py'
+              - '!app/certifications/**'
+              - 'build_search_index.py'
+              - 'eval/**'
+              - 'requirements.txt'
+
+      - name: Note whether the golden eval is worth running
+        if: steps.filter.outputs.ai == 'true'
+        run: |
+          echo "::notice title=Golden eval not run::AI/search-relevant files changed. \
+          The golden eval is manual -- run the CI/CD workflow via workflow_dispatch \
+          (Actions tab, or 'gh workflow run ci-cd.yml') to score this change."
+
+  # ---------------------------------------------------------------------
+  # Frontend typecheck + build. Every push and PR, same as `test`.
+  #
+  # This exists because `tsc -b` used to run in exactly one place -- the
+  # deploy job's build step -- and deploy only runs on a push to main. A
+  # frontend type error was therefore invisible on every PR and only
+  # surfaced on the merge commit, with terraform already applied and the
+  # App Service mid-deploy. That is how PR #73's OpenTelemetry change
+  # merged green and then broke main's deploy on
+  # `Property 'addSpanProcessor' does not exist on type 'WebTracerProvider'`.
+  #
+  # It runs `npm run build` -- the EXACT command the deploy job runs, not a
+  # bare `tsc --noEmit` -- so a green run here means the deploy's build step
+  # will succeed. A cheaper typecheck-only variant would still have caught
+  # that particular error, and would miss anything that only fails at bundle
+  # time (an unresolved import, a bad asset reference), which is the other
+  # half of what breaks a deploy.
+  #
+  # Its own job rather than a step inside `test`: it needs Node, not Python,
+  # and as a separate job it runs in parallel instead of adding a minute to
+  # the critical path. Unconditional rather than paths-filtered, on the same
+  # reasoning the filter block above gives for failing open -- a filter that
+  # forgets a path produces a job that silently does not run, which looks
+  # exactly like a job that passed.
+  # ---------------------------------------------------------------------
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # VITE_API_BASE blank, matching the deploy job -- so this builds the
+      # same bundle deploy will, and a base-URL-dependent break shows up
+      # here rather than in production.
+      - name: Typecheck and build
+        working-directory: frontend
+        run: VITE_API_BASE= npm run build
+
+  # ---------------------------------------------------------------------
+  # Golden evaluation set. Its own job, and deliberately NOT in anything
+  # else's `needs`, so it runs in parallel with terraform/deploy instead of
+  # in front of them.
+  #
+  # It used to be a step inside `test`, marked continue-on-error so it
+  # couldn't fail the build. But continue-on-error only stops a step
+  # FAILING the job -- it doesn't stop it BLOCKING one, and terraform
+  # (needs: test) and deploy (needs: [test, terraform]) both wait for the
+  # whole test job regardless. So a stuck eval bought 30 minutes of deploy
+  # latency for a result that was explicitly non-binding: observed live at
+  # 13 minutes to reach question 4 of 57, every question exhausting its
+  # retries against an unset CHAT_ENDPOINT. As its own job it can hang for
+  # the full timeout and cost the deploy nothing.
+  #
+  # continue-on-error is gone with it, on purpose. It existed to keep a
+  # non-binding step from failing the build; now that this job blocks
+  # nothing, a red X here is free signal, and the alternative is what
+  # actually happened -- a broken eval sitting green and unnoticed while
+  # every deploy quietly ran half an hour late. eval/run_golden_eval.py
+  # fails fast with a diagnosis when the chat resource isn't configured,
+  # so a red job here is a real finding, not a timeout.
+  #
+  # Manual (workflow_dispatch) only, not on push/PR. It used to run
+  # automatically whenever a paths-filter said app/** or eval/** changed --
+  # that meant an AI-touching PR ran the whole set once when opened and
+  # again when the same commit landed on push to main, back to back, for a
+  # result nothing downstream even waited on. It also hits real
+  # Azure OpenAI + Azure AI Search resources and is deliberately
+  # rate-limited (see eval/run_golden_eval.py), so both runs were slow.
+  # Since it was already non-binding and CLAUDE.md already says to ask
+  # before running it, making it opt-in outright removes the double-run
+  # instead of just halving it. Trigger it by hand from the Actions tab (or
+  # `gh workflow run ci-cd.yml`) after an app/** or eval/** change. It still
+  # needs its own secrets -- unrelated to the manual trigger, just how it
+  # reaches the real Azure OpenAI + Azure AI Search resources:
+  #
+  # Chat, embeddings, and search each have their own secret pair --
+  # GROUP3_4OPENAI* (chat), GROUP3_4_TEXT_EMBEDDING_3_SMALL_* (embedding),
+  # AISEARCH_* (Azure AI Search). Deployment names aren't secrets (not
+  # sensitive), hardcoded directly rather than added as repo secrets.
+  #
+  # No DATABASE_URL here, and no seed step: the eval runs against
+  # eval/fixture.db, a committed, pinned snapshot (golden_set.py's module
+  # docstring explains why -- seed.py's RNG_SEED being fixed does not mean
+  # reseeding regenerates the same PEOPLE, only that it's deterministic
+  # given the current code; every feature seed.py grows shifts the name
+  # pairing for everyone after it). run_golden_eval.py pins its own
+  # DATABASE_URL to eval/fixture.db internally, before importing app.db, so
+  # this job only has to get the fixture's *schema* current -- `alembic
+  # upgrade head` below, same as the deployed app does at startup, just
+  # against the checked-in file instead of the live Azure SQL database.
+  # ---------------------------------------------------------------------
+  golden-eval:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Migrate the pinned fixture to head
+        env:
+          DATABASE_URL: sqlite:///eval/fixture.db
+        run: alembic upgrade head
+
+      # No question count in this label on purpose -- it said 57 while the
+      # set held 64, and a number here has no way to stay true.
+      - name: Golden evaluation set
+        env:
+          CHAT_ENDPOINT: ${{ secrets.GROUP3_4OPENAIENDPOINT }}
+          CHAT_KEY: ${{ secrets.GROUP3_4OPENAIAPIKEY }}
+          OPENAI_CHAT_DEPLOYMENT: gpt-5
+          EMBEDDING_ENDPOINT: ${{ secrets.GROUP3_4_TEXT_EMBEDDING_3_SMALL_ENDPOINT }}
+          EMBEDDING_KEY: ${{ secrets.GROUP3_4_TEXT_EMBEDDING_3_SMALL_APIKEY }}
+          OPENAI_EMBEDDING_DEPLOYMENT: text-embedding-3-small
+          SEARCH_ENDPOINT: ${{ secrets.AISEARCH_ENDPOINT }}
+          SEARCH_KEY: ${{ secrets.AISEARCH_APIKEY }}
+        run: python eval/run_golden_eval.py
+
+  # ---------------------------------------------------------------------
+  # Infra. Only on a real push to main (never on a PR) -- a PR shouldn't
+  # be able to touch live Azure resources just by being opened.
+  # ---------------------------------------------------------------------
+  terraform:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: terraform
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      TF_VAR_db_pwd: ${{ secrets.DB_PASSWORD }}
+      # Same secrets the golden-eval step below uses -- see
+      # terraform/variables.tf for why these are now also app_settings.
+      TF_VAR_chat_endpoint: ${{ secrets.GROUP3_4OPENAIENDPOINT }}
+      TF_VAR_chat_key: ${{ secrets.GROUP3_4OPENAIAPIKEY }}
+      TF_VAR_embedding_endpoint: ${{ secrets.GROUP3_4_TEXT_EMBEDDING_3_SMALL_ENDPOINT }}
+      TF_VAR_embedding_key: ${{ secrets.GROUP3_4_TEXT_EMBEDDING_3_SMALL_APIKEY }}
+      TF_VAR_search_endpoint: ${{ secrets.AISEARCH_ENDPOINT }}
+      TF_VAR_search_key: ${{ secrets.AISEARCH_APIKEY }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform apply
+        run: terraform apply -auto-approve tfplan
+
+  # ---------------------------------------------------------------------
+  # App code. This job used to call the classic `az webapp deployment
+  # source config-zip` Kudu endpoint instead of `az webapp deploy`
+  # (OneDeploy), on the belief that OneDeploy skipped
+  # SCM_DO_BUILD_DURING_DEPLOYMENT -- that's what was blamed for the
+  # original ModuleNotFoundError('fastapi') outage. Investigated live:
+  # OneDeploy does honor that setting and runs Oryx's build the same way
+  # (confirmed via Kudu deployment logs showing "Running oryx build...").
+  # Switched to `az webapp deploy` after all, specifically for its
+  # --clean flag -- see the Deploy step's own comment for why that
+  # mattered (a real incremental-deploy bug, unrelated to this).
+  # ---------------------------------------------------------------------
+  deploy:
+    runs-on: ubuntu-latest
+    # `frontend` included so a build break stops the deploy BEFORE terraform
+    # has applied and the App Service has been touched -- rather than the
+    # deploy job rediscovering it in its own build step, which is what
+    # happened when this gate did not exist.
+    needs: [test, frontend, terraform]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # VITE_API_BASE deliberately blank -- app/main.py serves this build
+      # from the same App Service as the API, so relative fetches (see
+      # frontend/src/api.ts) reach it on the same origin. No CORS, no
+      # hardcoded backend URL baked into the bundle.
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          VITE_API_BASE= npm run build
+
+      - name: Build deploy zip (backend + built frontend)
+        run: |
+          # The seed_* scripts and build_search_index.py are operator tools run
+          # from the App Service's SSH console -- that's the only place inside
+          # the SQL firewall, and for the index rebuild it's the only place
+          # that won't publish a laptop's local employee ids into the shared
+          # employees-index. They have to be deployed to be runnable there.
+          #
+          # `config` is NOT an operator tool -- it is read at request time by
+          # app/continuity.py's _load_thresholds() on every /continuity/*
+          # call. Leaving it out doesn't degrade anything, it 500s the whole
+          # feature while every other route stays green, so the deploy looks
+          # healthy from /health. That is the fourth time this include list
+          # has silently dropped a required file (seed_training.py,
+          # seed_people_data.py, backfill_project_history.py were the first
+          # three); tests/test_deploy_manifest.py now fails the build instead.
+          zip -r deploy.zip app alembic alembic.ini requirements.txt .python-version seed.py \
+            seed_training.py seed_people_data.py seed_it_division.py build_search_index.py \
+            backfill_project_history.py seed_continuity.py build_project_embeddings.py \
+            seed_demo_depth.py seed_workplace_roles.py \
+            config \
+            frontend/dist \
+            -x "*__pycache__*" -x "*.pyc"
+
+      - uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.ARM_CLIENT_ID }}","clientSecret":"${{ secrets.ARM_CLIENT_SECRET }}","subscriptionId":"${{ secrets.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.ARM_TENANT_ID }}"}'
+
+      # Idempotent -- safe to set on every deploy. SCM_DO_BUILD_DURING_DEPLOYMENT
+      # is what makes the zipdeploy step below actually build instead of
+      # just copying files. DATABASE_URL points at the real Azure SQL
+      # database (tempest-database1) -- mirrors terraform/main.tf's
+      # app_settings exactly, so a `terraform apply` and this step never
+      # fight over what DATABASE_URL should be. Server/database name are
+      # not secrets (see terraform/main.tf's own comment on this), only
+      # the admin password is -- DB_PASSWORD is the same secret Terraform
+      # uses via TF_VAR_db_pwd.
+      #
+      # Retried, for the same reason the Deploy step below is: these are
+      # plain ARM calls and ARM has transient failures. Observed live --
+      # `(BadGatewayConnection) The network connectivity issue encountered
+      # for 'Microsoft.Web'` on the runtime-stack step, which killed the run
+      # before Deploy was even attempted. The retry loop existed one step too
+      # late to help: a blip on either of these two config calls wastes the
+      # whole job, including a terraform apply that already ran.
+      #
+      # Idempotent, so retrying is free -- both calls set an absolute desired
+      # state rather than mutating a previous one.
+      - name: Ensure required app settings
+        run: |
+          for attempt in 1 2 3; do
+            echo "App settings attempt $attempt/3..."
+            if az webapp config appsettings set \
+              --name ${{ env.WEBAPP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --settings \
+                SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+                DATABASE_URL="mssql+pymssql://QuadrantAdmin:${{ secrets.DB_PASSWORD }}@tempest-azure-sql.database.windows.net:1433/tempest-database1" \
+                CHAT_ENDPOINT="${{ secrets.GROUP3_4OPENAIENDPOINT }}" \
+                CHAT_KEY="${{ secrets.GROUP3_4OPENAIAPIKEY }}" \
+                OPENAI_CHAT_DEPLOYMENT="gpt-5" \
+                EMBEDDING_ENDPOINT="${{ secrets.GROUP3_4_TEXT_EMBEDDING_3_SMALL_ENDPOINT }}" \
+                EMBEDDING_KEY="${{ secrets.GROUP3_4_TEXT_EMBEDDING_3_SMALL_APIKEY }}" \
+                OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-3-small" \
+                SEARCH_ENDPOINT="${{ secrets.AISEARCH_ENDPOINT }}" \
+                SEARCH_KEY="${{ secrets.AISEARCH_APIKEY }}" \
+                ALLOW_DEV_AUTH=1; then
+              echo "App settings applied."
+              break
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::Could not apply app settings after 3 attempts."
+              exit 1
+            fi
+            echo "Transient ARM failure -- retrying in 15s."
+            sleep 15
+          done
+
+      # A web app recreated by Terraform (e.g. after a forced-replacement
+      # change like a location move) comes up with no explicit runtime
+      # stack, and Azure was observed defaulting that to PHP -- Oryx then
+      # tried to build this zip as a PHP app and failed with "Couldn't
+      # detect a version for the platform 'php'". The azurerm provider
+      # pinned here (~> 3.0) only validates application_stack.python_version
+      # up to 3.12, so it can't express "3.14" the way this app actually
+      # needs -- hence setting it here via CLI instead, same reasoning as
+      # the app_command_line/app_settings drift-reset steps above.
+      - name: Ensure Python runtime stack
+        run: |
+          for attempt in 1 2 3; do
+            echo "Runtime stack attempt $attempt/3..."
+            if az webapp config set \
+              --name ${{ env.WEBAPP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --linux-fx-version "PYTHON|3.14"; then
+              echo "Runtime stack set."
+              break
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::Could not set the runtime stack after 3 attempts."
+              exit 1
+            fi
+            echo "Transient ARM failure -- retrying in 15s."
+            sleep 15
+          done
+
+      # `az webapp deployment source config-zip` is deprecated AND was
+      # observed live to silently not replace wwwroot's contents on a
+      # non-clean deploy (Kudu logs showed context.CleanOutputPath=False,
+      # and files like app/main.py kept their pre-deploy bytes/mtime even
+      # though the workflow reported success and /health kept passing --
+      # the old process just kept serving stale code). `az webapp deploy`
+      # is the maintained replacement; --clean true forces Kudu to wipe
+      # the target directory first so there's nothing stale left for a
+      # partial/incremental Oryx build to silently keep around.
+      # The two config-changing steps just above (appsettings, runtime
+      # stack) each recycle the container -- Kudu's SCM site can 502
+      # while it's mid-restart if this fires immediately after. A blind
+      # sleep here was tried before and then removed (see git history:
+      # "wait after appsettings restart" then "drop the 30s pre-deploy
+      # sleep") -- wrong either way, since you can't know the actual
+      # restart time in advance. Retrying the deploy call itself instead
+      # survives the restart regardless of how long it actually takes,
+      # without guessing or wasting time when it's fast.
+      - name: Deploy (OneDeploy, triggers Oryx build)
+        run: |
+          # `az webapp deploy` polls Kudu synchronously, but that poll can
+          # drop (e.g. a 502 while the container is still recycling from
+          # the settings/runtime-stack steps above) even after Kudu has
+          # already accepted the zip and started an Oryx build. Retrying
+          # in that case doesn't repeat a no-op -- it starts a SECOND real
+          # deployment on top of the first. Observed live: two separate
+          # OneDeploy operations both mid "Running oryx build..." at once,
+          # ~65s apart, competing for the same single B1 core and each
+          # slowing the other down. Waiting here for the in-flight
+          # deployment to actually finish before retrying closes that gap.
+          # is_temp entries are excluded deliberately. A temp-* entry is the
+          # upload half of a deploy ("Receiving changes"), and an upload
+          # aborted partway -- precisely what a dropped CLI call leaves
+          # behind -- can sit there incomplete with no build behind it.
+          # Counting those would make every retry wait out the full cap
+          # below for a deployment that is never going to finish.
+          wait_for_previous_deploy() {
+            for i in $(seq 1 30); do
+              in_flight=$(az webapp log deployment list \
+                --name ${{ env.WEBAPP_NAME }} \
+                --resource-group ${{ env.RESOURCE_GROUP }} \
+                --query 'length([?complete==`false` && is_temp==`false`])' \
+                -o tsv 2>/dev/null || echo 0)
+              if [ "$in_flight" = "0" ]; then
+                return 0
+              fi
+              echo "Previous attempt is still building server-side -- waiting 15s before retrying so we don't start a second deploy on top of it."
+              sleep 15
+            done
+            echo "::warning::Timed out waiting for the previous deployment to finish; retrying anyway."
+          }
+
+          for attempt in 1 2 3; do
+            echo "Deploy attempt $attempt/3..."
+            if az webapp deploy \
+              --name ${{ env.WEBAPP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --src-path deploy.zip \
+              --type zip \
+              --clean true \
+              --restart true; then
+              echo "Deploy succeeded."
+              exit 0
+            fi
+            echo "Deploy attempt $attempt failed, likely Kudu still recycling from the settings change above -- retrying in 20s."
+            sleep 20
+            wait_for_previous_deploy
+          done
+          echo "::error::Deploy failed after 3 attempts."
+          exit 1
+
+      # Catches exactly the failure mode this project already hit once:
+      # a deploy that "succeeds" at the API level but the container
+      # crash-loops on startup. Fails the workflow instead of leaving a
+      # silently-503 site for someone to discover later.
+      #
+      # Also checks "/" isn't 404 -- /health alone doesn't catch a deploy
+      # that "succeeded" but never actually replaced the running code
+      # (observed live: old process kept passing /health for 20+ minutes
+      # after a "successful" deploy while still serving pre-frontend code
+      # with no static-file route at all). "/" only exists once the
+      # frontend build in this job actually landed, so it's a real signal
+      # that this deploy's content -- not some earlier one -- is live.
+      - name: Wait for health check
+        run: |
+          for i in $(seq 1 24); do
+            health_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+              "https://${{ env.WEBAPP_NAME }}.azurewebsites.net/health" || true)
+            root_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+              "https://${{ env.WEBAPP_NAME }}.azurewebsites.net/" || true)
+            echo "attempt $i: /health=$health_code /=$root_code"
+            if [ "$health_code" = "200" ] && [ "$root_code" = "200" ]; then
+              echo "Healthy, and serving current frontend build."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::App did not become healthy within 4 minutes of deploy."
+          exit 1

@@ -1,0 +1,21 @@
+$kind: http-request
+name: Update Ticket
+method: PUT
+url: '{{baseUrl}}/api/tickets/{{ticket_id}}'
+order: 4000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "title": null,
+      "description": null,
+      "category": null,
+      "priority": null,
+      "status": null,
+      "department": null,
+      "is_anonymous": null,
+      "attachment": null
+    }

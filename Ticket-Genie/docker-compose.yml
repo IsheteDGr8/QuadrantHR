@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: .
+      target: backend
+    container_name: ticketgenie-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - DATABASE_URL=sqlite:////data/ticketgenie.db
+      - USE_MOCK_AI=false
+      - AZURE_OPENAI_DEPLOYMENT=gpt-5.2
+      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME:-seed123data}
+      - AZURE_STORAGE_ACCOUNT_KEY=${AZURE_STORAGE_ACCOUNT_KEY:-}
+      - KNOWLEDGE_BLOB_CONTAINER=${KNOWLEDGE_BLOB_CONTAINER:-ticket-genie-knowledge}
+      - LOG_ANALYTICS_WORKSPACE_ID=${LOG_ANALYTICS_WORKSPACE_ID:-000a40b1-4089-4e36-840b-fff92c998bf5}
+      - ENABLE_SYNTHETIC_ANALYTICS=true
+    env_file:
+      - .env
+    volumes:
+      - ticketgenie-data:/data
+
+  frontend:
+    build:
+      context: .
+      target: frontend
+    container_name: ticketgenie-frontend
+    ports:
+      - "8080:80"
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - PORT=80
+      - SERVER_NAME=localhost
+    depends_on:
+      - backend
+
+volumes:
+  ticketgenie-data:

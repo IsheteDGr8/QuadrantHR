@@ -1,0 +1,258 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - frontend/**
+      - backend/**
+      - database/**
+      - scripts/**
+      - Dockerfile
+      - docker-compose.yml
+      - nginx.conf
+      - pyproject.toml
+      - terraform/**
+      - azure-pipelines.yml
+
+variables:
+  azureServiceConnection: "TicketGenie"
+  resourceGroupName: "Azure_Rangers"
+  keyVaultName: "kv-app-prod-12345"
+  aiKeyVaultName: "group-1"
+  acrName: "acrwebappprodticketgenie"
+  acrLoginServer: "acrwebappprodticketgenie.azurecr.io"
+  frontendImageRepository: "ticketgenie"
+  backendImageRepository: "ticket-genie-backend"
+  frontendWebAppName: "webapp-prod-frontend-ticketgenie"
+  backendWebAppName: "webapp-prod-backend-ticketgenie"
+  imageTag: "$(Build.BuildId)"
+
+stages:
+  - stage: BuildAndPush
+    displayName: Build and Push Containers
+    jobs:
+      - job: Build
+        displayName: Build container images
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: Build and Push FastAPI backend and Nginx frontend images to ACR
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                # Log in to Azure Container Registry
+                az acr login --name "$(acrName)"
+
+                # Ensure buildx builder is initialized for registry caching
+                docker buildx create --use --name pipeline-builder || docker buildx use pipeline-builder
+
+                # 1. Build and Push Backend Image with remote registry buildcache
+                docker buildx build \
+                  --push \
+                  --target backend \
+                  --cache-to type=registry,ref="$(acrLoginServer)/$(backendImageRepository):buildcache",mode=max \
+                  --cache-from type=registry,ref="$(acrLoginServer)/$(backendImageRepository):buildcache" \
+                  -t "$(acrLoginServer)/$(backendImageRepository):$(imageTag)" \
+                  -t "$(acrLoginServer)/$(backendImageRepository):latest" \
+                  -f Dockerfile .
+
+                # 2. Build and Push Frontend Image with remote registry buildcache
+                docker buildx build \
+                  --push \
+                  --target frontend \
+                  --cache-to type=registry,ref="$(acrLoginServer)/$(frontendImageRepository):buildcache",mode=max \
+                  --cache-from type=registry,ref="$(acrLoginServer)/$(frontendImageRepository):buildcache" \
+                  -t "$(acrLoginServer)/$(frontendImageRepository):$(imageTag)" \
+                  -t "$(acrLoginServer)/$(frontendImageRepository):latest" \
+                  -f Dockerfile .
+
+  - stage: UpdateWebApp
+    displayName: Update Web App Containers & Secrets
+    dependsOn: BuildAndPush
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployWebApp
+        displayName: Point Web Apps at new container images and configure Key Vault secrets
+        environment: production
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: none
+
+                - task: AzureCLI@2
+                  displayName: Update backend and frontend web app containers and Key Vault references
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+
+                      echo "=== 1. Ensuring Backend Managed Identity and Key Vault Access ==="
+                      # Enable System-Assigned Managed Identity on Backend Web App (idempotent)
+                      az webapp identity assign \
+                        --resource-group "$(resourceGroupName)" \
+                        --name "$(backendWebAppName)" >/dev/null || true
+
+                      BACKEND_PRINCIPAL_ID=$(az webapp identity show \
+                        --resource-group "$(resourceGroupName)" \
+                        --name "$(backendWebAppName)" \
+                        --query principalId -o tsv 2>/dev/null || echo "")
+
+                      if [ -n "$BACKEND_PRINCIPAL_ID" ]; then
+                        echo "Configuring Key Vault access policy for Principal ID: $BACKEND_PRINCIPAL_ID..."
+                        az keyvault set-policy \
+                          --name "$(keyVaultName)" \
+                          --object-id "$BACKEND_PRINCIPAL_ID" \
+                          --secret-permissions get list >/dev/null || true
+                      fi
+
+                      # Storage data and storage RBAC are intentionally not
+                      # changed by this deployment job.
+                      echo "=== 2. Updating Backend Web App (FastAPI REST API on Port 8000) ==="
+                      az webapp config container set \
+                        --resource-group "$(resourceGroupName)" \
+                        --name "$(backendWebAppName)" \
+                        --docker-custom-image-name "$(acrLoginServer)/$(backendImageRepository):$(imageTag)" \
+                        --docker-registry-server-url "https://$(acrLoginServer)"
+
+                      az webapp config appsettings set \
+                        --resource-group "$(resourceGroupName)" \
+                        --name "$(backendWebAppName)" \
+                        --settings \
+                          WEBSITES_PORT=8000 \
+                          ENABLE_SYNTHETIC_ANALYTICS=true \
+                          AZURE_CLIENT_ID="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=azure-client-id)" \
+                          AZURE_TENANT_ID="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=azure-tenant-id)" \
+                          GOOGLE_EMAIL="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=google-email)" \
+                          SMTP_USER="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=smtp-user)" \
+                          GOOGLE_APP_PASSWORD="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=google-app-password)" \
+                          SMTP_PASSWORD="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=smtp-password)" \
+                          SMTP_HOST="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=smtp-host)" \
+                          SMTP_PORT="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=smtp-port)" \
+                          SMTP_USE_TLS="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=smtp-use-tls)" \
+                          AZURE_OPENAI_ENDPOINT="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=azure-openai-endpoint)" \
+                          GROUP1OPENAIENDPOINT="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=group1openaiendpoint)" \
+                          AZURE_OPENAI_API_KEY="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=azure-openai-api-key)" \
+                          GROUP1OPENAIAPIKEY="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=group1openaiapikey)" \
+                          GROUP1_TEXT_EMBEDDING_3_SMALL_APIKEY="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=group1-embedding-api-key)" \
+                          GROUP1_TEXT_EMBEDDING_3_SMALL_ENDPOINT="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=group1-embedding-endpoint)" \
+                          AZURE_STORAGE_ACCOUNT_NAME="seed123data" \
+                          KNOWLEDGE_BLOB_CONTAINER="ticket-genie-knowledge" \
+                          AZURE_AI_SEARCH_ENDPOINT="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=azure-ai-search-endpoint)" \
+                          AZURE_AI_SEARCH_KEY="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=azure-ai-search-key)" \
+                          AISEARCH_ENDPOINT="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=azure-ai-search-endpoint)" \
+                          AISEARCH_APIKEY="@Microsoft.KeyVault(VaultName=$(keyVaultName);SecretName=azure-ai-search-key)" \
+                          AISEARCH_INDEX_NAME="group-1"
+
+                      az webapp restart \
+                        --resource-group "$(resourceGroupName)" \
+                        --name "$(backendWebAppName)"
+
+                      echo "=== 3. Updating Frontend Web App (Nginx UI on Port 80) ==="
+                      az webapp config container set \
+                        --resource-group "$(resourceGroupName)" \
+                        --name "$(frontendWebAppName)" \
+                        --docker-custom-image-name "$(acrLoginServer)/$(frontendImageRepository):$(imageTag)" \
+                        --docker-registry-server-url "https://$(acrLoginServer)"
+
+                      az webapp config appsettings set \
+                        --resource-group "$(resourceGroupName)" \
+                        --name "$(frontendWebAppName)" \
+                        --settings WEBSITES_PORT=80 BACKEND_URL="https://$(backendWebAppName).azurewebsites.net" BACKEND_API_URL="https://$(backendWebAppName).azurewebsites.net"
+
+                      az webapp restart \
+                        --resource-group "$(resourceGroupName)" \
+                        --name "$(frontendWebAppName)"
+
+  - stage: VerifyDeployment
+    displayName: Verify Container Health & Startup Logs
+    dependsOn: UpdateWebApp
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: HealthCheck
+        displayName: Poll container health endpoints and capture logs on failure
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: none
+
+          - task: AzureCLI@2
+            displayName: Verify backend and frontend health probes
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                echo "=== 1. Checking Backend Health Probe (FastAPI) ==="
+                BACKEND_HEALTHY=false
+                for i in {1..12}; do
+                  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://$(backendWebAppName).azurewebsites.net/health" || true)
+                  if [ "$STATUS" = "200" ]; then
+                    echo "Backend container is up and healthy! (HTTP 200)"
+                    BACKEND_HEALTHY=true
+                    break
+                  fi
+                  echo "Attempt $i/12: Backend returned HTTP $STATUS. Retrying in 10s..."
+                  sleep 10
+                done
+
+                if [ "$BACKEND_HEALTHY" = "false" ]; then
+                  echo "ERROR: Backend container failed health check! Downloading backend startup logs..."
+                  az webapp log download \
+                    --resource-group "$(resourceGroupName)" \
+                    --name "$(backendWebAppName)" \
+                    --log-file /tmp/backend_logs.zip || true
+
+                  if [ -f /tmp/backend_logs.zip ]; then
+                    mkdir -p /tmp/backend_logs
+                    unzip -o /tmp/backend_logs.zip -d /tmp/backend_logs/ || true
+                    echo "=== BACKEND STARTUP FAILURE LOGS ==="
+                    cat /tmp/backend_logs/LogFiles/StartupLogs/*_failure.log 2>/dev/null || cat /tmp/backend_logs/LogFiles/*_docker.log | tail -n 100 || true
+                  fi
+                  exit 1
+                fi
+
+                echo "=== 2. Checking Frontend Health Probe (Nginx) ==="
+                FRONTEND_HEALTHY=false
+                for i in {1..18}; do
+                  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://$(frontendWebAppName).azurewebsites.net/healthz" || true)
+                  if [ "$STATUS" = "200" ]; then
+                    echo "Frontend container is up and healthy! (HTTP 200)"
+                    FRONTEND_HEALTHY=true
+                    break
+                  fi
+                  echo "Attempt $i/18: Frontend returned HTTP $STATUS. Retrying in 10s..."
+                  sleep 10
+                done
+
+                if [ "$FRONTEND_HEALTHY" = "false" ]; then
+                  echo "ERROR: Frontend container failed health check! Downloading frontend startup logs..."
+                  az webapp log download \
+                    --resource-group "$(resourceGroupName)" \
+                    --name "$(frontendWebAppName)" \
+                    --log-file /tmp/frontend_logs.zip || true
+
+                  if [ -f /tmp/frontend_logs.zip ]; then
+                    mkdir -p /tmp/frontend_logs
+                    unzip -o /tmp/frontend_logs.zip -d /tmp/frontend_logs/ || true
+                    echo "=== FRONTEND STARTUP FAILURE LOGS ==="
+                    cat /tmp/frontend_logs/LogFiles/StartupLogs/*_failure.log 2>/dev/null || cat /tmp/frontend_logs/LogFiles/*_docker.log | tail -n 100 || true
+                  fi
+                  exit 1
+                fi
+
+                echo "All containers verified healthy and operational!"

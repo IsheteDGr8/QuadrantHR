@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IT Operations Portal | TicketGenie Management</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <style>
+    .welcome-section { padding: 24px 0 16px; border-bottom: 1px solid #e1e6e2; margin-bottom: 24px; }
+    .eyebrow { font-size: 0.75rem; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+    .welcome-section h2 { font-size: 1.5rem; color: #111827; margin-top: 4px; font-weight: 600; }
+    .welcome-section p { color: #6b7280; font-size: 0.9rem; margin-top: 2px; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .stat-card { background: white; border: 1px solid #e1e6e2; padding: 20px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+    .stat-card h3 { font-size: 0.85rem; color: #6b7280; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+    .stat-number { font-size: 1.8rem; font-weight: bold; color: #111827; }
+    .border-blue { border-left: 4px solid #0284c7; }
+    .border-green { border-left: 4px solid #16a34a; }
+
+    .ticket-table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; border: 1px solid #e1e6e2; overflow: hidden; }
+    .ticket-table th { background: #fcfbfc; padding: 12px 16px; text-align: left; font-size: 0.75rem; color: #6b7280; text-transform: uppercase; border-bottom: 1px solid #e1e6e2; }
+    .ticket-table td { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; color: #374151; vertical-align: middle; }
+    
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    .badge-high { background: #fee2e2; color: #b91c1c; }
+    .badge-med { background: #fef3c7; color: #b45309; }
+    .badge-open { background: #e0e7ff; color: #4338ca; }
+    .badge-progress { background: #fef3c7; color: #92400e; }
+    
+    .btn-sm { background: #2b1b36; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; transition: background 0.2s; }
+    .btn-sm:hover { background: #533760; }
+  </style>
+</head>
+<body class="employee-page management-page">
+
+  <div id="shared-sidebar"></div>
+
+  <main class="main-content">
+    <div id="shared-topnav"></div>
+
+    <section class="welcome-section">
+      <div class="eyebrow">INFORMATION TECHNOLOGY</div>
+      <h2>IT Operations Portal</h2>
+      <p>Manage infrastructure alerts, laptop provisioning, M365 object IDs, and hardware requests.</p>
+    </section>
+
+    <div class="stats-grid">
+      <div class="stat-card border-blue">
+        <h3>Active IT Tickets</h3>
+        <span class="stat-number" id="itActive">0</span>
+      </div>
+      <div class="stat-card border-blue">
+        <h3>Hardware Requests</h3>
+        <span class="stat-number" id="itHardware">0</span>
+      </div>
+      <div class="stat-card border-green">
+        <h3>Network Health</h3>
+        <span class="stat-number" style="color: #16a34a; font-size: 1.4rem;">99.9% Operational</span>
+      </div>
+      <div class="stat-card border-green">
+        <h3>SLA Compliance</h3>
+        <span class="stat-number" style="color: #16a34a; font-size: 1.4rem;">98.4% On Time</span>
+      </div>
+    </div>
+
+    <section class="section">
+      <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div><h3>Active IT Queue</h3><p style="font-size: 0.85rem; color: #6b7280;">High priority technical issues & access provisioning</p></div>
+      </div>
+      <table class="ticket-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Category</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="itTableBody">
+          <tr><td colspan="6" style="text-align:center;">Loading IT tickets...</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/azure-auth.js"></script>
+  <script src="../js/theme.js"></script>
+  <script src="../js/script.js"></script>
+  <script src="components.js"></script>
+  <script src="management.js"></script>
+  <script>
+  document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      const itTickets = await apiFetchTickets({ adminView: true, department: "IT" });
+
+      const active = itTickets.filter(t => (t.status || "").toLowerCase() !== "resolved").length;
+      const hw = itTickets.filter(t => (t.category || "").toLowerCase().includes("hardware") || (t.title || "").toLowerCase().includes("laptop")).length;
+
+      document.getElementById("itActive").textContent = active;
+      document.getElementById("itHardware").textContent = hw;
+
+      const tbody = document.getElementById("itTableBody");
+      const displayList = itTickets;
+      if (!displayList || displayList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No IT tickets found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = displayList.slice(0, 7).map(t => `
+        <tr>
+          <td><strong>#${t.id}</strong></td>
+          <td>${escapeHTML(t.title)}</td>
+          <td>${escapeHTML(t.category)}</td>
+          <td><span class="badge ${ (t.priority||'').toLowerCase() === 'high' ? 'badge-high' : 'badge-med' }">${t.priority || 'Medium'}</span></td>
+          <td><span class="badge badge-open">${t.status}</span></td>
+          <td>
+            <a href="inbox.html" class="btn-sm" style="text-decoration: none;">Triage</a>
+          </td>
+        </tr>
+      `).join("");
+    } catch (err) {
+      console.error("Failed to load IT portal data:", err);
+    }
+  });
+  </script>
+</body>
+</html>
+

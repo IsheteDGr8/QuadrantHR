@@ -1,0 +1,130 @@
+name: Production Infrastructure and Azure Handoff
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "terraform/**"
+      - "backend/**"
+      - "Dockerfile"
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      force_terraform:
+        description: 'Force run Terraform Apply even if no terraform files changed'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: production-infra-apply
+  cancel-in-progress: false
+
+jobs:
+  build-and-push-containers:
+    name: Build and Push Container Images (Backend & Frontend)
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: |
+          az acr login --name acrwebappprodticketgenie
+
+      - name: Build, Push, and Archive Docker Images
+        run: |
+          mkdir -p container-artifacts
+
+          # 1. Build and push FastAPI backend image
+          docker build --target backend -t acrwebappprodticketgenie.azurecr.io/ticket-genie-backend:latest -f Dockerfile .
+          docker push acrwebappprodticketgenie.azurecr.io/ticket-genie-backend:latest
+          docker save acrwebappprodticketgenie.azurecr.io/ticket-genie-backend:latest -o container-artifacts/backend-container.tar
+
+          # 2. Build and push Streamlit frontend image
+          docker build --target frontend -t acrwebappprodticketgenie.azurecr.io/ticketgenie:latest -f Dockerfile .
+          docker push acrwebappprodticketgenie.azurecr.io/ticketgenie:latest
+          docker save acrwebappprodticketgenie.azurecr.io/ticketgenie:latest -o container-artifacts/frontend-container.tar
+
+      - name: Upload Container Archives to DevOps / GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-artifacts
+          path: container-artifacts/
+
+  terraform-apply:
+
+    name: Terraform Apply and Azure Handoff
+    runs-on: ubuntu-latest
+    environment: production
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check if Terraform files changed
+        id: check_tf
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run_tf=true" >> $GITHUB_OUTPUT
+          elif git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | grep -q '^terraform/'; then
+            echo "run_tf=true" >> $GITHUB_OUTPUT
+          else
+            echo "No terraform/ files modified in this commit. Skipping Terraform Apply."
+            echo "run_tf=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Terraform
+        if: steps.check_tf.outputs.run_tf == 'true'
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Log in to Azure via OIDC
+        if: steps.check_tf.outputs.run_tf == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init and Apply
+        if: steps.check_tf.outputs.run_tf == 'true'
+        working-directory: terraform
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          terraform init
+          terraform apply -auto-approve
+    
+      - name: Trigger Azure DevOps Pipeline
+        env:
+          AZURE_DEVOPS_TOKEN: ${{ secrets.AZ_DEVOPS_PAT }}
+          ADO_ORGANIZATION: "Intern2026"
+          ADO_PROJECT: "Azure Rangers"
+          PIPELINE_ID: "2"
+        run: |
+          curl -X POST \
+            -u ":$AZURE_DEVOPS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"definition\": {\"id\": ${PIPELINE_ID}}, \"resources\": {\"repositories\": {\"self\": {\"refName\": \"refs/heads/main\"}}}}" \
+            "https://dev.azure.com/${ADO_ORGANIZATION}/${ADO_PROJECT// /%20}/_apis/build/builds?api-version=7.0"

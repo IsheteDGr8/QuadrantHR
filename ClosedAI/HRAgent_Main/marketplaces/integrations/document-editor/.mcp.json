@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "document-editor": {
+      "transport": "stdio",
+      "command": "${PYTHON}",
+      "args": [
+        "${SKILL_ROOT}/server/document_server.py"
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+$kind: http-request
+name: Genie Chat
+method: POST
+url: '{{baseUrl}}/api/genie/chat'
+order: 1000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "message": "How do I check my ticket status?"
+    }

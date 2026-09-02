@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TicketGenie - Policy Library</title>
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { display: flex; min-height: 100vh; background: #f8fafc; color: #1f2937; }
+    .sidebar { width: 260px; background: #2b1b38; color: #d1d5db; display: flex; flex-direction: column; flex-shrink: 0; justify-content: space-between; min-height: 100vh; transition: width 0.3s ease; white-space: nowrap; overflow-y: auto; overflow-x: hidden; }
+    .sidebar-top { flex: 1; }
+    .sidebar-header { padding: 24px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .bot-icon { background: rgba(255,255,255,0.1); color: #facc15; padding: 8px; border-radius: 8px; font-size: 1.4rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .sidebar-brand-text h2 { color: #fff; font-size: 1.1rem; font-weight: 600; }
+    .sidebar-brand-text span { display: block; font-size: 0.65rem; color: #a5b4fc; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+    .nav-section { margin-top: 24px; }
+    .nav-title { font-size: 0.65rem; color: #818cf8; text-transform: uppercase; font-weight: 700; margin: 0 16px 8px; letter-spacing: 1px; }
+    .nav-link { display: flex; align-items: center; gap: 12px; padding: 10px 16px; margin: 0 8px 4px; color: #d1d5db; text-decoration: none; font-size: 0.85rem; border-radius: 8px; transition: 0.2s; }
+    .nav-link:hover { background: rgba(255,255,255,0.05); color: #fff; }
+    .nav-link.active { background: rgba(255,255,255,0.12); color: #fff; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); }
+    .menu-icon { font-size: 1.25rem; flex-shrink: 0; display: flex; justify-content: center; width: 24px; }
+    .nav-link.active .menu-icon { color: #a5b4fc; }
+    .sidebar-footer { padding: 24px; font-size: 0.75rem; color: #a5b4fc; border-top: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 8px; }
+    .status-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; flex-shrink: 0; }
+    .sidebar.collapsed { width: 80px; }
+    .sidebar.collapsed .sidebar-brand-text, .sidebar.collapsed .nav-title, .sidebar.collapsed .menu-text, .sidebar.collapsed .sidebar-footer-text { display: none; }
+    .sidebar.collapsed .sidebar-header { justify-content: center; padding: 24px 0; }
+    .sidebar.collapsed .nav-link { justify-content: center; padding: 14px 0; margin: 0 8px 8px; }
+    .sidebar.collapsed .sidebar-footer { justify-content: center; padding: 24px 0; }
+    .main-content { flex: 1; min-width: 0; }
+    .top-nav { display: flex; justify-content: space-between; align-items: center; padding: 16px 32px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+    .btn-hamburger { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; width: 36px; height: 36px; cursor: pointer; color: #6b7280; font-size: 1.2rem; }
+    .nav-actions, .user-profile { display: flex; align-items: center; gap: 16px; }
+    .nav-icon-btn { border: 0; background: transparent; color: #6b7280; font-size: 1.2rem; cursor: pointer; }
+    .user-profile { gap: 12px; font-size: 0.85rem; padding-left: 16px; border-left: 1px solid #e5e7eb; }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; background: #eef2ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; }
+    .page-padding { max-width: 1280px; margin: 0 auto; padding: 40px; }
+    .eyebrow { color: #4f46e5; font-size: 0.7rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+    h1 { color: #111827; font-size: 2rem; line-height: 1.2; }
+    .intro { color: #6b7280; font-size: 0.9rem; margin-top: 8px; }
+    .search-panel { margin-top: 28px; padding: 26px; border-radius: 14px; background: linear-gradient(135deg, #31203e, #49325a); color: #fff; box-shadow: 0 14px 30px rgba(43,27,56,0.14); }
+    .search-panel h2 { font-size: 1.05rem; margin-bottom: 14px; }
+    .search-wrap { position: relative; }
+    .search-wrap i { position: absolute; left: 16px; top: 14px; color: #6b7280; font-size: 1.25rem; }
+    #policySearch { width: 100%; height: 50px; border: 0; border-radius: 9px; padding: 0 18px 0 48px; color: #111827; font-size: 0.95rem; outline: none; }
+    .filter-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .filter-btn { border: 1px solid rgba(255,255,255,0.24); border-radius: 7px; padding: 8px 14px; background: transparent; color: #e9d5ff; cursor: pointer; font-size: 0.8rem; }
+    .filter-btn:hover, .filter-btn.active { background: #fff; color: #3b2750; }
+    .section-heading { display: flex; justify-content: space-between; align-items: center; margin: 34px 0 14px; }
+    .section-heading h2 { color: #111827; font-size: 1.1rem; }
+    .section-heading span { color: #6b7280; font-size: 0.8rem; }
+    .popular-grid, .category-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .popular-card, .category-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px; transition: 0.2s; }
+    .popular-card { cursor: pointer; }
+    .popular-card:hover, .category-card:hover { border-color: #a5b4fc; transform: translateY(-2px); box-shadow: 0 6px 14px rgba(79,70,229,0.08); }
+    .doc-icon { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; margin-bottom: 14px; }
+    .pdf { background: #fee2e2; color: #dc2626; } .docx { background: #dbeafe; color: #2563eb; } .web { background: #dcfce7; color: #16a34a; }
+    .popular-card h3 { font-size: 0.88rem; color: #111827; line-height: 1.35; }
+    .popular-card p, .category-card p { color: #6b7280; font-size: 0.75rem; margin-top: 7px; line-height: 1.45; }
+    .category-grid { grid-template-columns: repeat(3, 1fr); }
+    .category-card { display: flex; align-items: flex-start; gap: 14px; cursor: pointer; }
+    .category-card .doc-icon { margin: 0; background: #eef2ff; color: #4f46e5; flex-shrink: 0; }
+    .category-card h3 { color: #111827; font-size: 0.9rem; }
+    .category-card .count { display: inline-block; margin-top: 10px; color: #4f46e5; font-size: 0.72rem; font-weight: 700; }
+    .documents-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+    .documents-panel table { width: 100%; border-collapse: collapse; }
+    th { padding: 14px 18px; text-align: left; color: #6b7280; background: #f8fafc; border-bottom: 1px solid #e5e7eb; font-size: 0.7rem; letter-spacing: 0.6px; text-transform: uppercase; }
+    td { padding: 15px 18px; border-bottom: 1px solid #f1f5f9; color: #374151; font-size: 0.83rem; }
+    tr:last-child td { border-bottom: 0; }
+    .document-name { display: flex; align-items: center; gap: 10px; color: #111827; font-weight: 600; }
+    .document-name i { font-size: 1.25rem; }
+    .document-type { font-size: 0.7rem; font-weight: 700; color: #6b7280; text-transform: uppercase; }
+    .actions { display: flex; gap: 7px; }
+    .action-btn { border: 1px solid #dbe2ea; background: #fff; color: #4b5563; border-radius: 6px; padding: 7px 10px; font-size: 0.75rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+    .action-btn:hover { background: #eef2ff; border-color: #a5b4fc; color: #4338ca; }
+    .empty-state { display: none; text-align: center; padding: 32px; color: #6b7280; font-size: 0.85rem; }
+    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(17,24,39,0.48); align-items: center; justify-content: center; z-index: 20; padding: 20px; }
+    .modal-backdrop.open { display: flex; }
+    .modal { width: min(560px, 100%); background: #fff; border-radius: 12px; padding: 26px; box-shadow: 0 20px 40px rgba(0,0,0,0.18); }
+    .modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+    .modal h2 { color: #111827; font-size: 1.15rem; }
+    .modal-close { border: 0; background: transparent; color: #6b7280; cursor: pointer; font-size: 1.3rem; }
+    .modal-meta { color: #6b7280; font-size: 0.78rem; margin: 8px 0 20px; }
+    .modal-body { color: #374151; line-height: 1.7; font-size: 0.88rem; }
+    @media (max-width: 1000px) { .popular-grid { grid-template-columns: repeat(2, 1fr); } .category-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 700px) { .sidebar { width: 74px; } .sidebar-brand-text, .nav-title, .menu-text, .sidebar-footer-text { display: none; } .sidebar-header, .sidebar-footer { justify-content: center; padding: 20px 0; } .nav-link { justify-content: center; padding: 12px 0; } .page-padding { padding: 24px 16px; } .top-nav { padding: 14px 16px; } .popular-grid { grid-template-columns: 1fr; } th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { display: none; } }
+  </style>
+</head>
+<body>
+  <aside class="sidebar" id="appSidebar">
+    <div class="sidebar-top">
+      <div class="sidebar-header"><div class="bot-icon"><i class="ph-fill ph-ticket"></i></div><div class="sidebar-brand-text"><h2>TicketGenie</h2><span id="sidebarRole">Unified Portal</span></div></div>
+      <div class="nav-section"><div class="nav-title">Workspace</div><a href="admin_dashboard.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-chart-pie-slice"></i></span><span class="menu-text">My Dashboard</span></a><a href="announcements.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-megaphone"></i></span><span class="menu-text">Announcements</span></a><a href="analytics.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-trend-up"></i></span><span class="menu-text">Analytics</span></a><a href="calendar.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-calendar-blank"></i></span><span class="menu-text">Calendar</span></a></div>
+      <div class="nav-section"><div class="nav-title">Ticketing System</div><a href="submit-ticket.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-plus-circle"></i></span><span class="menu-text">Submit Request</span></a><a href="inbox.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-tray"></i></span><span class="menu-text">Team Inbox</span></a></div>
+      <div class="nav-section"><div class="nav-title">Administration</div><a href="policy_library.html" class="nav-link active"><span class="menu-icon"><i class="ph-duotone ph-books"></i></span><span class="menu-text">Policy Library</span></a><a href="ticket_archive.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-archive"></i></span><span class="menu-text">Ticket Archive</span></a></div>
+      <div class="nav-section"><div class="nav-title">Account</div><a href="settings.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-gear"></i></span><span class="menu-text">Settings</span></a></div>
+    </div>
+    <div class="sidebar-footer"><div class="status-dot"></div><div class="sidebar-footer-text"><div style="color: white; font-weight: 600;">Systems operational</div></div></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="top-nav"><button class="btn-hamburger" onclick="toggleSidebar()" aria-label="Toggle sidebar"><i class="ph ph-list"></i></button><div class="nav-actions"><button class="nav-icon-btn" id="darkModeToggle" type="button" aria-label="Toggle Dark Mode"><i class="ph-fill ph-moon" id="darkModeIcon"></i></button><button class="nav-icon-btn" aria-label="Notifications"><i class="ph-fill ph-bell"></i></button><div class="user-profile"><div style="text-align:right"><div id="navName" style="color:#111827">User</div><div id="navSubRole" style="font-size:.7rem;color:#6b7280">Role</div></div><div class="avatar" id="navAvatar">U</div></div></div></div>
+    <div class="page-padding">
+      <div class="eyebrow">Knowledge center</div>
+      <h1>Policy Library</h1>
+      <p class="intro">Find the latest policies, forms, and guidelines for your work.</p>
+
+      <section class="search-panel">
+        <h2>What are you looking for?</h2>
+        <div class="search-wrap"><i class="ph ph-magnifying-glass"></i><input id="policySearch" type="search" placeholder="Search for policies, forms, or guidelines..." autocomplete="off"></div>
+        <div class="filter-row" role="group" aria-label="Filter policies by department">
+          <button class="filter-btn active" data-filter="all">All</button><button class="filter-btn" data-filter="it">IT Security</button><button class="filter-btn" data-filter="hr">HR &amp; Benefits</button><button class="filter-btn" data-filter="travel">Operations &amp; Travel</button>
+        </div>
+      </section>
+
+      <div class="section-heading"><h2>Popular right now</h2><span>Frequently accessed documents</span></div>
+      <div class="popular-grid">
+        <article class="popular-card" data-open="Employee Handbook"><div class="doc-icon pdf"><i class="ph-fill ph-file-pdf"></i></div><h3>Employee Handbook</h3><p>Updated Aug 12, 2026</p></article>
+        <article class="popular-card" data-open="Work From Home Policy"><div class="doc-icon web"><i class="ph-fill ph-globe"></i></div><h3>Work From Home Policy</h3><p>Updated Aug 8, 2026</p></article>
+        <article class="popular-card" data-open="Holiday Schedule 2026"><div class="doc-icon docx"><i class="ph-fill ph-file-doc"></i></div><h3>Holiday Schedule 2026</h3><p>Updated Jul 29, 2026</p></article>
+        <article class="popular-card" data-open="Expense Reimbursement Form"><div class="doc-icon pdf"><i class="ph-fill ph-file-pdf"></i></div><h3>Expense Reimbursement Form</h3><p>Updated Aug 2, 2026</p></article>
+      </div>
+
+      <div class="section-heading"><h2>Browse by category</h2><span>Organized for quick discovery</span></div>
+      <div class="category-grid">
+        <article class="category-card" data-filter-card="it"><div class="doc-icon"><i class="ph-duotone ph-shield-check"></i></div><div><h3>IT &amp; Security</h3><p>Password policies, approved software, and device agreements.</p><span class="count">8 documents</span></div></article>
+        <article class="category-card" data-filter-card="hr"><div class="doc-icon"><i class="ph-duotone ph-users-three"></i></div><div><h3>HR &amp; Benefits</h3><p>Insurance, PTO, employee handbook, and code of conduct.</p><span class="count">11 documents</span></div></article>
+        <article class="category-card" data-filter-card="travel"><div class="doc-icon"><i class="ph-duotone ph-airplane-tilt"></i></div><div><h3>Operations &amp; Travel</h3><p>Corporate cards, booking rules, and office safety procedures.</p><span class="count">7 documents</span></div></article>
+      </div>
+
+      <div class="section-heading"><h2>All documents</h2><span id="resultCount">6 documents</span></div>
+      <section class="documents-panel">
+        <table><thead><tr><th>Document</th><th>Department</th><th>Last updated</th><th>Type</th><th>Actions</th></tr></thead><tbody id="documentRows">
+          <tr data-category="hr" data-title="Employee Handbook"><td><div class="document-name"><i class="ph-fill ph-file-pdf" style="color:#dc2626"></i>Employee Handbook</div></td><td>HR &amp; Benefits</td><td>Aug 12, 2026</td><td><span class="document-type">PDF</span></td><td><div class="actions"><button class="action-btn view-btn" data-title="Employee Handbook"><i class="ph ph-eye"></i>View</button><button class="action-btn download-btn" data-title="Employee Handbook"><i class="ph ph-download-simple"></i></button></div></td></tr>
+          <tr data-category="it" data-title="Password & Account Security"><td><div class="document-name"><i class="ph-fill ph-file-pdf" style="color:#dc2626"></i>Password &amp; Account Security</div></td><td>IT Security</td><td>Aug 10, 2026</td><td><span class="document-type">PDF</span></td><td><div class="actions"><button class="action-btn view-btn" data-title="Password & Account Security"><i class="ph ph-eye"></i>View</button><button class="action-btn download-btn" data-title="Password & Account Security"><i class="ph ph-download-simple"></i></button></div></td></tr>
+          <tr data-category="travel" data-title="Corporate Travel & Booking"><td><div class="document-name"><i class="ph-fill ph-file-doc" style="color:#2563eb"></i>Corporate Travel &amp; Booking</div></td><td>Operations &amp; Travel</td><td>Aug 6, 2026</td><td><span class="document-type">DOCX</span></td><td><div class="actions"><button class="action-btn view-btn" data-title="Corporate Travel & Booking"><i class="ph ph-eye"></i>View</button><button class="action-btn download-btn" data-title="Corporate Travel & Booking"><i class="ph ph-download-simple"></i></button></div></td></tr>
+          <tr data-category="it" data-title="Approved Software List"><td><div class="document-name"><i class="ph-fill ph-globe" style="color:#16a34a"></i>Approved Software List</div></td><td>IT Security</td><td>Aug 4, 2026</td><td><span class="document-type">WEB</span></td><td><div class="actions"><button class="action-btn view-btn" data-title="Approved Software List"><i class="ph ph-eye"></i>View</button><button class="action-btn download-btn" data-title="Approved Software List"><i class="ph ph-download-simple"></i></button></div></td></tr>
+          <tr data-category="hr" data-title="PTO & Leave Guidelines"><td><div class="document-name"><i class="ph-fill ph-file-pdf" style="color:#dc2626"></i>PTO &amp; Leave Guidelines</div></td><td>HR &amp; Benefits</td><td>Jul 31, 2026</td><td><span class="document-type">PDF</span></td><td><div class="actions"><button class="action-btn view-btn" data-title="PTO & Leave Guidelines"><i class="ph ph-eye"></i>View</button><button class="action-btn download-btn" data-title="PTO & Leave Guidelines"><i class="ph ph-download-simple"></i></button></div></td></tr>
+          <tr data-category="travel" data-title="Office Safety Procedures"><td><div class="document-name"><i class="ph-fill ph-file-doc" style="color:#2563eb"></i>Office Safety Procedures</div></td><td>Operations &amp; Travel</td><td>Jul 25, 2026</td><td><span class="document-type">DOCX</span></td><td><div class="actions"><button class="action-btn view-btn" data-title="Office Safety Procedures"><i class="ph ph-eye"></i>View</button><button class="action-btn download-btn" data-title="Office Safety Procedures"><i class="ph ph-download-simple"></i></button></div></td></tr>
+        </tbody></table><div class="empty-state" id="emptyState">No documents match your search.</div>
+      </section>
+    </div>
+
+    <div class="genie-container">
+      <button class="genie-button" id="genieButton" type="button"><i class="ph-fill ph-magic-wand"></i> Ask Genie</button>
+      <div class="genie-chat" id="genieChat">
+        <div class="genie-chat-header">
+          <div class="genie-header-info">
+            <div class="genie-avatar"><i class="ph-fill ph-magic-wand"></i></div>
+            <div><strong>Genie AI</strong><span><span class="genie-status-dot"></span> Online</span></div>
+          </div>
+          <button class="genie-close" id="closeGenieButton" type="button"><i class="ph ph-x"></i></button>
+        </div>
+        <div class="genie-messages" id="genieMessages">
+          <div class="genie-message">
+            <div class="genie-message-avatar"><i class="ph-fill ph-magic-wand"></i></div>
+            <div class="genie-bubble">Hi! I'm Genie. I can help you find policies, summarize documents, and answer general admin questions.</div>
+          </div>
+          <div class="genie-suggestions">
+            <button class="genie-suggestion" type="button">Find a policy</button>
+            <button class="genie-suggestion" type="button">Summarize a document</button>
+            <button class="genie-suggestion" type="button">Get help</button>
+          </div>
+        </div>
+        <div class="genie-input-area">
+          <input type="text" id="genieInput" placeholder="Ask Genie something..." autocomplete="off">
+          <button type="button" id="genieSendButton"><i class="ph-fill ph-arrow-up"></i></button>
+        </div>
+        <div class="genie-disclaimer">Genie may occasionally provide inaccurate information.</div>
+      </div>
+    </div>
+  </main>
+
+  <div class="modal-backdrop" id="documentModal"><div class="modal"><div class="modal-header"><div><h2 id="modalTitle">Document</h2><div class="modal-meta" id="modalMeta"></div></div><button class="modal-close" id="closeModal" aria-label="Close"><i class="ph ph-x"></i></button></div><div class="modal-body">This policy is available in the current Policy Library. Please review the latest version before sharing guidance or submitting a request.</div></div></div>
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/api.js"></script>
+  <script src="../js/azure-auth.js"></script>
+  <script src="../js/theme.js"></script>
+  <script src="../js/script.js"></script>
+  <script>
+    function toggleSidebar() { document.getElementById('appSidebar').classList.toggle('collapsed'); }
+    const userDataString = sessionStorage.getItem('portalUser') || localStorage.getItem('portalUser');
+    if (userDataString) {
+      const user = JSON.parse(userDataString);
+      document.getElementById('sidebarRole').innerText = `${user.role} Portal`;
+      document.getElementById('navName').innerText = user.name;
+      document.getElementById('navSubRole').innerText = `${user.role} Admin`;
+      document.getElementById('navAvatar').innerText = user.name.charAt(0).toUpperCase();
+    } else { window.location.href = '../index.html'; }
+
+    initializeGenie();
+
+    const searchInput = document.getElementById('policySearch');
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    const rows = [...document.querySelectorAll('#documentRows tr')];
+    let currentFilter = 'all';
+    function renderDocuments() {
+      const query = searchInput.value.trim().toLowerCase();
+      let visible = 0;
+      rows.forEach((row) => {
+        const matchesFilter = currentFilter === 'all' || row.dataset.category === currentFilter;
+        const matchesSearch = !query || row.dataset.title.toLowerCase().includes(query) || row.textContent.toLowerCase().includes(query);
+        const show = matchesFilter && matchesSearch;
+        row.style.display = show ? '' : 'none';
+        if (show) visible += 1;
+      });
+      document.getElementById('resultCount').innerText = `${visible} document${visible === 1 ? '' : 's'}`;
+      document.getElementById('emptyState').style.display = visible ? 'none' : 'block';
+    }
+    filterButtons.forEach((button) => button.addEventListener('click', () => { currentFilter = button.dataset.filter; filterButtons.forEach((item) => item.classList.toggle('active', item === button)); renderDocuments(); }));
+    searchInput.addEventListener('input', renderDocuments);
+    document.querySelectorAll('[data-filter-card]').forEach((card) => card.addEventListener('click', () => { const button = document.querySelector(`[data-filter="${card.dataset.filterCard}"]`); button.click(); document.querySelector('.documents-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
+    document.querySelectorAll('[data-open]').forEach((card) => card.addEventListener('click', () => openDocument(card.dataset.open)));
+    document.querySelectorAll('.view-btn').forEach((button) => button.addEventListener('click', () => openDocument(button.dataset.title)));
+    document.querySelectorAll('.download-btn').forEach((button) => button.addEventListener('click', () => { const file = new Blob([`${button.dataset.title}\n\nTicketGenie Policy Library\nCurrent policy version: August 2026`], { type: 'text/plain' }); const link = document.createElement('a'); link.href = URL.createObjectURL(file); link.download = `${button.dataset.title.replace(/[^a-z0-9]+/gi, '-')}.txt`; link.click(); URL.revokeObjectURL(link.href); }));
+    function openDocument(title) { document.getElementById('modalTitle').innerText = title; document.getElementById('modalMeta').innerText = 'Policy Library | Current version'; document.getElementById('documentModal').classList.add('open'); }
+    document.getElementById('closeModal').addEventListener('click', () => document.getElementById('documentModal').classList.remove('open'));
+    document.getElementById('documentModal').addEventListener('click', (event) => { if (event.target.id === 'documentModal') event.currentTarget.classList.remove('open'); });
+    renderDocuments();
+  </script>
+</body>
+</html>

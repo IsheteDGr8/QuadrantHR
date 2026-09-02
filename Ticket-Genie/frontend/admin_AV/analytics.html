@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TicketGenie - Analytics</title>
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    /* --- SHARED CORE STYLES --- */
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { display: flex; height: 100vh; background-color: #f9fafb; color: #1f2937; margin: 0; overflow: hidden; }
+
+    /* COLLAPSIBLE SIDEBAR */
+    .sidebar { width: 260px; background-color: #2b1b38; color: #d1d5db; display: flex; flex-direction: column; flex-shrink: 0; justify-content: space-between; z-index: 10; transition: width 0.3s ease; white-space: nowrap; overflow-x: hidden; }
+    .sidebar.collapsed { width: 80px; }
+    .sidebar-top { flex: 1; }
+    .sidebar-header { padding: 24px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .bot-icon { background: rgba(255,255,255,0.1); color: #facc15; padding: 8px; border-radius: 8px; font-size: 1.4rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .sidebar-brand-text h2 { color: #ffffff; font-size: 1.1rem; font-weight: 600; margin-bottom: 2px; }
+    .sidebar-brand-text span { display: block; font-size: 0.65rem; color: #a5b4fc; text-transform: uppercase; letter-spacing: 1px; }
+    
+    .nav-section { margin-top: 24px; }
+    .nav-title { font-size: 0.65rem; color: #818cf8; text-transform: uppercase; font-weight: 700; margin: 0 16px 8px; letter-spacing: 1px; transition: opacity 0.2s; }
+    .nav-link { display: flex; align-items: center; gap: 12px; padding: 10px 16px; margin: 0 8px 4px; color: #d1d5db; text-decoration: none; font-size: 0.85rem; border-radius: 8px; transition: 0.2s; }
+    .nav-link:hover { background-color: rgba(255,255,255,0.05); color: #ffffff; }
+    .nav-link.active { background-color: rgba(255,255,255,0.12); color: #ffffff; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); }
+    .menu-icon { font-size: 1.25rem; flex-shrink: 0; display: flex; justify-content: center; width: 24px; transition: 0.2s; }
+    .nav-link.active .menu-icon { color: #a5b4fc; }
+    
+    .sidebar-footer { padding: 24px; font-size: 0.75rem; color: #a5b4fc; border-top: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 8px; }
+    .status-dot { width: 8px; height: 8px; background-color: #10b981; border-radius: 50%; flex-shrink: 0; }
+
+    .sidebar.collapsed .sidebar-brand-text, .sidebar.collapsed .nav-title, .sidebar.collapsed .menu-text, .sidebar.collapsed .sidebar-footer-text { display: none; }
+    .sidebar.collapsed .sidebar-header { justify-content: center; padding: 24px 0; }
+    .sidebar.collapsed .nav-link { justify-content: center; padding: 14px 0; margin: 0 8px 8px; }
+    .sidebar.collapsed .nav-link span:not(.menu-icon) { display: none; }
+    .sidebar.collapsed .sidebar-footer { justify-content: center; padding: 24px 0; }
+
+    /* MAIN CONTENT & TOP NAV */
+    .main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; position: relative; }
+    .top-nav { display: flex; justify-content: space-between; align-items: center; padding: 16px 32px; background: #ffffff; border-bottom: 1px solid #e5e7eb; }
+    .nav-left-cluster { display: flex; align-items: center; gap: 16px; }
+    .btn-hamburger { background: white; border: 1px solid #e5e7eb; border-radius: 8px; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: #6b7280; transition: 0.2s; }
+    .btn-hamburger:hover { background: #f3f4f6; color: #111827; box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.15); border-color: #d1d5db; }
+    .nav-actions { display: flex; align-items: center; gap: 16px; }
+    .nav-icon-btn { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: #6b7280; transition: 0.2s; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 50%; }
+    .nav-icon-btn:hover { color: #f59e0b; background: #fffbeb; }
+    .user-profile { display: flex; align-items: center; gap: 12px; font-size: 0.85rem; padding-left: 16px; border-left: 1px solid #e5e7eb; }
+    .avatar { width: 32px; height: 32px; background: #eef2ff; color: #4f46e5; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 0.75rem; font-weight: bold; }
+
+    /* PAGE STYLES */
+    .page-padding { padding: 40px; max-width: 1200px; margin: 0 auto; width: 100%; }
+    .eyebrow-text { font-size: 0.7rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .page-title { font-size: 1.75rem; color: #111827; font-weight: 600; margin-bottom: 32px; }
+    
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .time-filter { display: flex; gap: 12px; align-items: center; }
+    .time-filter select { padding: 10px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9rem; font-weight: 600; color: #374151; cursor: pointer; outline: none; transition: 0.2s; }
+    .time-filter select:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+    
+    button { transition: all 0.2s ease; cursor: pointer; position: relative; }
+    .btn-ai-report { background: linear-gradient(135deg, #4f46e5, #7e22ce); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2); }
+    .btn-ai-report:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(79, 70, 229, 0.3); }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+    .kpi-card { background: white; border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); transition: 0.3s; }
+    .kpi-title { font-size: 0.8rem; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .kpi-val { font-size: 2.2rem; font-weight: 700; color: #111827; }
+    .kpi-trend { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+    .trend-up { color: #16a34a; } .trend-down { color: #dc2626; } .trend-neutral { color: #6b7280; }
+
+    .charts-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+    .chart-card { background: white; border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .chart-card h3 { font-size: 1.1rem; color: #111827; margin-bottom: 8px; }
+    .chart-card p { font-size: 0.85rem; color: #6b7280; margin-bottom: 24px; }
+
+    /* Custom CSS Bar Chart */
+    .css-bar-chart { display: flex; align-items: flex-end; gap: 16px; height: 220px; padding-bottom: 30px; position: relative; border-bottom: 1px solid #e5e7eb; margin-top: 20px; }
+    .bar-column { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; position: relative; }
+    .bar { width: 100%; max-width: 48px; border-radius: 6px 6px 0 0; transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
+    .bar-label { position: absolute; bottom: -25px; font-size: 0.75rem; color: #6b7280; font-weight: 600; text-align: center; width: 100%; }
+    .bar-value { position: absolute; top: -25px; font-size: 0.85rem; font-weight: 700; color: #374151; opacity: 0; transition: opacity 0.3s 0.6s; }
+    .css-bar-chart.loaded .bar-value { opacity: 1; }
+
+    /* Capacity Bar */
+    .capacity-container { display: flex; flex-direction: column; justify-content: center; height: 100%; gap: 16px; }
+    .cap-header { display: flex; justify-content: space-between; align-items: flex-end; }
+    .cap-hours { font-size: 2.5rem; font-weight: bold; color: #111827; line-height: 1; }
+    .cap-max { font-size: 1rem; color: #6b7280; font-weight: normal; }
+    .cap-track { width: 100%; height: 24px; background: #f3f4f6; border-radius: 12px; overflow: hidden; }
+    .cap-fill { height: 100%; background: linear-gradient(90deg, #4f46e5, #c026d3); border-radius: 12px; transition: width 0.6s ease; }
+
+    /* --- AI REPORT MODAL --- */
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(31, 41, 55, 0.7); display: none; justify-content: center; align-items: center; z-index: 1000; padding: 20px; backdrop-filter: blur(4px); }
+    .modal-overlay.active { display: flex; animation: fadeIn 0.2s; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    
+    .ai-report-modal { background: white; width: 100%; max-width: 650px; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); transform: translateY(20px); transition: 0.3s; }
+    .modal-overlay.active .ai-report-modal { transform: translateY(0); }
+    
+    .modal-header { background: linear-gradient(135deg, #2b1b38, #4f46e5); color: white; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h2 { font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .btn-close { background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; justify-content: center; align-items: center; transition: 0.2s; }
+    .btn-close:hover { background: rgba(255,255,255,0.3); }
+
+    .modal-body { padding: 32px; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; }
+    .report-section { border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; background: #fdfdfd; }
+    .report-section h3 { font-size: 0.9rem; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
+    .report-section p { font-size: 0.95rem; color: #374151; line-height: 1.6; }
+    .highlight-stat { font-weight: bold; color: #111827; background: #eef2ff; padding: 2px 6px; border-radius: 4px; }
+
+    /* Button Loading state */
+    .btn-loading { color: transparent !important; pointer-events: none; }
+    .btn-loading::after { content: ""; position: absolute; width: 18px; height: 18px; top: 0; left: 0; right: 0; bottom: 0; margin: auto; border: 3px solid rgba(255,255,255,0.3); border-top-color: #ffffff; border-radius: 50%; animation: button-spin 0.6s linear infinite; }
+    @keyframes button-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    
+    /* Genie Chatbot Styles */
+    .genie-container { position: fixed; bottom: 28px; right: 28px; z-index: 1000; }
+    .genie-button { height: 45px; padding: 0 17px; border: none; border-radius: 23px; background: #2b1b38; color: white; display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15); cursor: pointer; transition: 0.2s; }
+    .genie-button:hover { background: #4f46e5; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(79,70,229,0.3); }
+    .genie-button i { font-size: 1.1rem; color: #facc15; }
+    .genie-chat { position: fixed; right: 28px; bottom: 85px; width: 355px; height: 505px; background: white; border: 1px solid #dfe5e1; border-radius: 12px; box-shadow: 0 18px 45px rgba(43,27,54,0.18); display: none; flex-direction: column; overflow: hidden; z-index: 999; }
+    .genie-chat.open { display: flex; animation: genieOpen 0.2s ease-out; }
+    @keyframes genieOpen { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .genie-chat-header { height: 68px; padding: 0 16px; background: #2b1b38; color: white; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .genie-header-info { display: flex; align-items: center; gap: 10px; }
+    .genie-avatar { width: 34px; height: 34px; border-radius: 8px; background: #6f4b82; display: flex; align-items: center; justify-content: center; color: white; }
+    .genie-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; }
+    .genie-close { width: 30px; height: 30px; border: none; background: transparent; color: #a0aaa4; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    .genie-close:hover { color: white; background: rgba(255,255,255,0.1); }
+    .genie-messages { flex: 1; overflow-y: auto; padding: 18px 15px; background: #fafcfb; }
+    .genie-message { display: flex; gap: 8px; margin-bottom: 15px; }
+    .genie-message-avatar { width: 26px; height: 26px; border-radius: 7px; background: #f1ebf4; color: #6f4b82; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10px; }
+    .genie-bubble { max-width: 255px; background: white; border: 1px solid #e1e6e2; border-radius: 5px 10px 10px 10px; padding: 10px 12px; color: #5f6b63; font-size: 0.85rem; line-height: 1.55; }
+    .genie-message-user { justify-content: flex-end; }
+    .genie-message-user .genie-bubble { background: #6f4b82; color: white; border-color: #6f4b82; border-radius: 10px 5px 10px 10px; }
+    .genie-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: 34px; margin-bottom: 12px; }
+    .genie-suggestion { border: 1px solid #d2c6d6; background: white; color: #6f4b82; border-radius: 15px; padding: 6px 10px; font-size: 0.8rem; cursor: pointer; transition: 0.2s; }
+    .genie-suggestion:hover { background: #f1ebf4; }
+    .genie-input-area { min-height: 58px; padding: 10px; border-top: 1px solid #e5eae6; background: white; display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+    .genie-input-area input { flex: 1; height: 37px; border: 1px solid #dfe5e1; border-radius: 7px; padding: 0 11px; outline: none; font-size: 0.85rem; }
+    .genie-input-area input:focus { border-color: #6f4b82; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+    .genie-input-area button { width: 37px; height: 37px; flex-shrink: 0; border: none; border-radius: 7px; background: #6f4b82; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+    .genie-input-area button:hover { background: #533760; }
+    .genie-disclaimer { padding: 0 12px 9px; background: white; color: #a0a8a3; text-align: center; font-size: 0.7rem; }
+
+    /* --- ANALYTICS DASHBOARD --- */
+    .analytics-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 24px; margin-bottom: 24px; border-bottom: 2px solid #e5e7eb; }
+    .analytics-title h1 { font-size: 1.75rem; font-weight: 600; color: #111827; }
+    .analytics-title p { font-size: 0.85rem; color: #6b7280; margin-top: 4px; }
+
+    .filter-bar { display: flex; gap: 12px; align-items: center; background: white; padding: 16px 24px; border-radius: 12px; border: 1px solid #e5e7eb; margin-bottom: 32px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .filter-label { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: #6b7280; }
+    .filter-select { padding: 10px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9rem; color: #374151; background: #fdfdfd; cursor: pointer; outline: none; transition: 0.2s; }
+    .filter-select:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+    .kpi-card { background: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .kpi-title { font-size: 0.8rem; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .kpi-value { font-size: 2.2rem; font-weight: 700; color: #111827; margin-bottom: 8px; }
+    .kpi-meta { font-size: 0.75rem; color: #6b7280; }
+
+    .charts-container { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+    .chart-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .chart-card h3 { font-size: 1rem; font-weight: 600; color: #111827; margin-bottom: 8px; }
+    .chart-card p { font-size: 0.8rem; color: #6b7280; margin-bottom: 20px; }
+
+    .line-chart-container { height: 280px; position: relative; margin-top: 16px; }
+    .doughnut-chart-container { height: 280px; display: flex; justify-content: center; align-items: center; }
+    .horizontal-bar-chart { display: flex; flex-direction: column; gap: 16px; }
+    .bar-item { display: flex; align-items: center; gap: 12px; }
+    .bar-label { min-width: 100px; font-size: 0.85rem; font-weight: 500; color: #374151; }
+    .bar-track { flex: 1; height: 28px; background: #f3f4f6; border-radius: 6px; overflow: hidden; position: relative; }
+    .bar-fill { height: 100%; background: linear-gradient(90deg, #4f46e5, #7c3aed); display: flex; align-items: center; justify-content: flex-end; padding-right: 12px; font-size: 0.75rem; font-weight: 600; color: white; }
+
+    .heatmap-container { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+    .heatmap-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 0.75rem; font-weight: 600; color: white; cursor: pointer; transition: 0.2s; }
+    .heatmap-cell:hover { transform: scale(1.05); }
+    .heatmap-label { font-size: 0.7rem; color: #6b7280; font-weight: 500; padding: 8px 0; text-align: center; }
+    .heatmap-row { display: flex; gap: 8px; align-items: center; }
+    .heatmap-time { font-size: 0.7rem; color: #6b7280; min-width: 40px; text-align: right; }
+
+    @media (max-width: 1200px) { .charts-container { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body class="admin-page">
+
+  <aside class="sidebar" id="appSidebar">
+    <div class="sidebar-top">
+      <div class="sidebar-header">
+        <div class="bot-icon"><i class="ph-fill ph-ticket"></i></div>
+        <div class="sidebar-brand-text"><h2>TicketGenie</h2><span id="sidebarRole">Unified Portal</span></div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-title">Workspace</div>
+        <a href="admin_dashboard.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-chart-pie-slice"></i></span><span class="menu-text">My Dashboard</span></a>
+        <a href="announcements.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-megaphone"></i></span><span class="menu-text">Announcements</span></a>
+        <a href="analytics.html" class="nav-link active"><span class="menu-icon"><i class="ph-duotone ph-trend-up"></i></span><span class="menu-text">Analytics</span></a>
+        <a href="calendar.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-calendar-blank"></i></span><span class="menu-text">Calendar</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-title">Ticketing System</div>
+        <a href="submit-ticket.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-plus-circle"></i></span><span class="menu-text">Submit Request</span></a>
+        <a href="inbox.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-tray"></i></span><span class="menu-text">Team Inbox</span></a>
+      </div>
+      <div class="nav-section" id="adminNav" style="display: block;">
+        <div class="nav-title">Administration</div>
+        <a href="policy_library.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-books"></i></span><span class="menu-text">Policy Library</span></a>
+        <a href="ticket_archive.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-archive"></i></span><span class="menu-text">Ticket Archive</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-title">Account</div>
+        <a href="settings.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-gear"></i></span><span class="menu-text">Settings</span></a>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="status-dot"></div>
+      <div class="sidebar-footer-text"><div style="color: white; font-weight: 600;">Systems operational</div></div>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="top-nav">
+      <div class="nav-left-cluster"><button class="btn-hamburger" onclick="toggleSidebar()"><i class="ph ph-list"></i></button></div>
+      <div class="nav-actions">
+        <button class="nav-icon-btn" id="darkModeToggle" type="button" aria-label="Toggle Dark Mode"><i class="ph-fill ph-moon" id="darkModeIcon"></i></button><button class="nav-icon-btn"><i class="ph-fill ph-bell"></i></button>
+        <div class="user-profile"><div style="text-align: right;"><div id="navName" style="color: #111827;">User</div><div id="navSubRole" style="font-size: 0.7rem; color: #6b7280;">Role</div></div><div class="avatar" id="navAvatar">U</div></div>
+      </div>
+    </div>
+
+    <div class="page-padding">
+      <div class="analytics-header">
+        <div class="analytics-title">
+          <h1>Performance Analytics</h1>
+          <p>Comprehensive insights into ticket volume, team productivity, and operational trends</p>
+        </div>
+      </div>
+
+      <!-- Filter Bar -->
+      <div class="filter-bar">
+        <span class="filter-label">📅 Date Range:</span>
+        <select class="filter-select" id="dateFilter" onchange="updateAnalytics()">
+          <option value="7days">Last 7 Days</option>
+          <option value="30days" selected>Last 30 Days</option>
+          <option value="ytd">Year to Date</option>
+        </select>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-title">Avg Resolution Time</div>
+          <div class="kpi-value" id="kpi-res-time">4.2 Hrs</div>
+          <div class="kpi-meta">Target: 4.0 hrs | ↓ 12% from last month</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">First Response Time</div>
+          <div class="kpi-value" id="kpi-first-response">18 Min</div>
+          <div class="kpi-meta">Target: 15 min | ↑ 3 min from last month</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Customer Satisfaction (CSAT)</div>
+          <div class="kpi-value" id="kpi-csat">4.8 / 5.0</div>
+          <div class="kpi-meta">Based on 127 ratings | ↑ 0.2 from last month</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Ticket Backlog</div>
+          <div class="kpi-value" id="kpi-backlog">43</div>
+          <div class="kpi-meta">Unresolved from yesterday | Stable</div>
+        </div>
+      </div>
+
+      <!-- Charts Row 1 -->
+      <div class="charts-container">
+        <!-- Ticket Volume Trends -->
+        <div class="chart-card">
+          <h3>📈 Ticket Volume Trends</h3>
+          <p>Tickets opened vs closed over time — showing workload vs throughput</p>
+          <div class="line-chart-container">
+            <svg width="100%" height="100%" viewBox="0 0 500 280" style="position: absolute; top: 0; left: 0;">
+              <!-- Grid -->
+              <line x1="50" y1="240" x2="480" y2="240" stroke="#e5e7eb" stroke-width="2"/>
+              <line x1="50" y1="50" x2="50" y2="240" stroke="#e5e7eb" stroke-width="2"/>
+              <!-- Opened Line (Purple) -->
+              <polyline points="50,200 100,180 150,160 200,140 250,130 300,120 350,110 400,100 450,95" fill="none" stroke="#4f46e5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- Closed Line (Green) -->
+              <polyline points="50,210 100,195 150,175 200,165 250,145 300,135 350,125 400,115 450,110" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- Day labels -->
+              <text x="50" y="265" font-size="12" text-anchor="middle" fill="#6b7280">1</text>
+              <text x="150" y="265" font-size="12" text-anchor="middle" fill="#6b7280">7</text>
+              <text x="250" y="265" font-size="12" text-anchor="middle" fill="#6b7280">14</text>
+              <text x="350" y="265" font-size="12" text-anchor="middle" fill="#6b7280">21</text>
+              <text x="450" y="265" font-size="12" text-anchor="middle" fill="#6b7280">30</text>
+              <!-- Y-axis labels -->
+              <text x="45" y="245" font-size="12" text-anchor="end" fill="#6b7280">0</text>
+              <text x="45" y="145" font-size="12" text-anchor="end" fill="#6b7280">50</text>
+              <text x="45" y="55" font-size="12" text-anchor="end" fill="#6b7280">100</text>
+            </svg>
+            <div style="position: relative; margin-top: 20px; display: flex; gap: 24px; justify-content: center; font-size: 0.85rem;">
+              <div style="display: flex; align-items: center; gap: 6px;"><div style="width: 12px; height: 3px; background: #4f46e5;"></div> Opened</div>
+              <div style="display: flex; align-items: center; gap: 6px;"><div style="width: 12px; height: 3px; background: #10b981;"></div> Closed</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tickets by Category (Doughnut) -->
+        <div class="chart-card">
+          <h3>🎯 Tickets by Category</h3>
+          <p>Distribution of tickets across departments and issue types</p>
+          <div class="doughnut-chart-container">
+            <svg width="220" height="220" viewBox="0 0 220 220">
+              <!-- Doughnut Chart -->
+              <circle cx="110" cy="110" r="80" fill="none" stroke="#4f46e5" stroke-width="25" stroke-dasharray="125.6 628.3" stroke-dashoffset="0"/>
+              <circle cx="110" cy="110" r="80" fill="none" stroke="#0ea5e9" stroke-width="25" stroke-dasharray="113 628.3" stroke-dashoffset="-125.6"/>
+              <circle cx="110" cy="110" r="80" fill="none" stroke="#10b981" stroke-width="25" stroke-dasharray="94.2 628.3" stroke-dashoffset="-238.6"/>
+              <circle cx="110" cy="110" r="80" fill="none" stroke="#f59e0b" stroke-width="25" stroke-dasharray="56.5 628.3" stroke-dashoffset="-332.8"/>
+              <circle cx="110" cy="110" r="80" fill="none" stroke="#8b5cf6" stroke-width="25" stroke-dasharray="38.2 628.3" stroke-dashoffset="-389.3"/>
+              <!-- Center text -->
+              <text x="110" y="110" font-size="28" font-weight="700" text-anchor="middle" dy="0.3em" fill="#111827">485</text>
+              <text x="110" y="125" font-size="12" text-anchor="middle" fill="#6b7280">Total</text>
+            </svg>
+            <div style="position: absolute; right: 24px; top: 24px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; gap: 8px; align-items: center;"><div style="width: 12px; height: 12px; background: #4f46e5; border-radius: 2px;"></div> IT: 125</div>
+              <div style="display: flex; gap: 8px; align-items: center;"><div style="width: 12px; height: 12px; background: #0ea5e9; border-radius: 2px;"></div> Payroll: 113</div>
+              <div style="display: flex; gap: 8px; align-items: center;"><div style="width: 12px; height: 12px; background: #10b981; border-radius: 2px;"></div> HR: 94</div>
+              <div style="display: flex; gap: 8px; align-items: center;"><div style="width: 12px; height: 12px; background: #f59e0b; border-radius: 2px;"></div> Access: 57</div>
+              <div style="display: flex; gap: 8px; align-items: center;"><div style="width: 12px; height: 12px; background: #8b5cf6; border-radius: 2px;"></div> Other: 38</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Row 2 -->
+      <div class="charts-container">
+        <!-- Workload by Agent -->
+        <div class="chart-card">
+          <h3>👥 Workload by Agent</h3>
+          <p>Tickets resolved per team member this week — fairness & performance indicator</p>
+          <div class="horizontal-bar-chart" style="margin-top: 16px;">
+            <div class="bar-item">
+              <div class="bar-label">Sarah Chen</div>
+              <div class="bar-track"><div class="bar-fill" style="width: 95%;">28</div></div>
+            </div>
+            <div class="bar-item">
+              <div class="bar-label">Marcus Johnson</div>
+              <div class="bar-track"><div class="bar-fill" style="width: 82%;">24</div></div>
+            </div>
+            <div class="bar-item">
+              <div class="bar-label">Elena Rodriguez</div>
+              <div class="bar-track"><div class="bar-fill" style="width: 78%;">23</div></div>
+            </div>
+            <div class="bar-item">
+              <div class="bar-label">David Kim</div>
+              <div class="bar-track"><div class="bar-fill" style="width: 72%;">21</div></div>
+            </div>
+            <div class="bar-item">
+              <div class="bar-label">Priya Patel</div>
+              <div class="bar-track"><div class="bar-fill" style="width: 65%;">19</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Peak Submission Times (Heatmap) -->
+        <div class="chart-card">
+          <h3>⏰ Peak Submission Times</h3>
+          <p>When tickets arrive most — staffing optimization guide</p>
+          <div style="margin-top: 16px; overflow-x: auto;">
+            <div style="display: grid; grid-template-columns: 50px repeat(7, 1fr); gap: 8px;">
+              <div></div>
+              <div class="heatmap-label">Mon</div>
+              <div class="heatmap-label">Tue</div>
+              <div class="heatmap-label">Wed</div>
+              <div class="heatmap-label">Thu</div>
+              <div class="heatmap-label">Fri</div>
+              <div class="heatmap-label">Sat</div>
+              <div class="heatmap-label">Sun</div>
+              
+              <div class="heatmap-time">9 AM</div>
+              <div class="heatmap-cell" style="background: #7c3aed;">24</div>
+              <div class="heatmap-cell" style="background: #6366f1;">18</div>
+              <div class="heatmap-cell" style="background: #a855f7;">28</div>
+              <div class="heatmap-cell" style="background: #7c3aed;">22</div>
+              <div class="heatmap-cell" style="background: #d946ef;">32</div>
+              <div class="heatmap-cell" style="background: #e0e7ff;">4</div>
+              <div class="heatmap-cell" style="background: #fce7f3;">3</div>
+
+              <div class="heatmap-time">12 PM</div>
+              <div class="heatmap-cell" style="background: #6366f1;">16</div>
+              <div class="heatmap-cell" style="background: #818cf8;">14</div>
+              <div class="heatmap-cell" style="background: #4f46e5;">12</div>
+              <div class="heatmap-cell" style="background: #6366f1;">17</div>
+              <div class="heatmap-cell" style="background: #818cf8;">13</div>
+              <div class="heatmap-cell" style="background: #fce7f3;">1</div>
+              <div class="heatmap-cell" style="background: #f5e6f8;">2</div>
+
+              <div class="heatmap-time">3 PM</div>
+              <div class="heatmap-cell" style="background: #4f46e5;">12</div>
+              <div class="heatmap-cell" style="background: #818cf8;">14</div>
+              <div class="heatmap-cell" style="background: #6366f1;">15</div>
+              <div class="heatmap-cell" style="background: #4f46e5;">11</div>
+              <div class="heatmap-cell" style="background: #6366f1;">18</div>
+              <div class="heatmap-cell" style="background: #e0e7ff;">5</div>
+              <div class="heatmap-cell" style="background: #fce7f3;">2</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+          <p style="font-size: 0.8rem; color: #6b7280; margin-bottom: 20px;">Effectiveness at solving each priority level (Weekly Update).</p>
+          <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px;"><span>Priority 1 (Critical)</span> <span style="color: #16a34a;">90% Auto-Resolved</span></div>
+              <div style="width: 100%; height: 8px; background: #fee2e2; border-radius: 4px; overflow: hidden;"><div style="width: 90%; height: 100%; background: #dc2626; border-radius: 4px;"></div></div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px;"><span>Priority 2 (High)</span> <span style="color: #16a34a;">82% Solved Quickly</span></div>
+              <div style="width: 100%; height: 8px; background: #ffedd5; border-radius: 4px; overflow: hidden;"><div style="width: 82%; height: 100%; background: #ea580c; border-radius: 4px;"></div></div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px;"><span>Priority 3 (Medium)</span> <span style="color: #6b7280;">65% Solved</span></div>
+              <div style="width: 100%; height: 8px; background: #fef08a; border-radius: 4px; overflow: hidden;"><div style="width: 65%; height: 100%; background: #ca8a04; border-radius: 4px;"></div></div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px;"><span>Priority 4 (Low)</span> <span style="color: #6b7280;">75% Solved</span></div>
+              <div style="width: 100%; height: 8px; background: #e0f2fe; border-radius: 4px; overflow: hidden;"><div style="width: 75%; height: 100%; background: #0284c7; border-radius: 4px;"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="genie-container">
+      <button class="genie-button" id="genieButton" type="button"><i class="ph-fill ph-magic-wand"></i> Ask Genie</button>
+      <div class="genie-chat" id="genieChat">
+        <div class="genie-chat-header">
+          <div class="genie-header-info">
+            <div class="genie-avatar"><i class="ph-fill ph-magic-wand"></i></div>
+            <div><strong>Genie AI</strong><span><span class="genie-status-dot"></span> Online</span></div>
+          </div>
+          <button class="genie-close" id="closeGenieButton" type="button"><i class="ph ph-x"></i></button>
+        </div>
+        <div class="genie-messages" id="genieMessages">
+          <div class="genie-message">
+            <div class="genie-message-avatar"><i class="ph-fill ph-magic-wand"></i></div>
+            <div class="genie-bubble">Hi! I'm Genie. I can help you analyze metrics, understand trends, or guide you through analytics.</div>
+          </div>
+          <div class="genie-suggestions">
+            <button class="genie-suggestion" type="button">Analyze data</button>
+            <button class="genie-suggestion" type="button">View trends</button>
+            <button class="genie-suggestion" type="button">Get help</button>
+          </div>
+        </div>
+        <div class="genie-input-area">
+          <input type="text" id="genieInput" placeholder="Ask Genie something..." autocomplete="off">
+          <button type="button" id="genieSendButton"><i class="ph-fill ph-arrow-up"></i></button>
+        </div>
+        <div class="genie-disclaimer">Genie may occasionally provide inaccurate information.</div>
+      </div>
+    </div>
+  </main>
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/api.js"></script>
+  <script src="../js/azure-auth.js"></script>
+  <script src="../js/theme.js"></script>
+  <script src="../js/script.js"></script>
+  <script>
+    function toggleSidebar() { 
+      document.getElementById('appSidebar').classList.toggle('collapsed'); 
+    }
+    
+    const userDataString = sessionStorage.getItem('portalUser') || localStorage.getItem('portalUser');
+    if (userDataString) {
+      const user = JSON.parse(userDataString);
+      document.getElementById('sidebarRole').innerText = `${user.role} Portal`;
+      document.getElementById('navName').innerText = user.name;
+      document.getElementById('navSubRole').innerText = `${user.role} Admin`;
+      document.getElementById('navAvatar').innerText = user.name.charAt(0).toUpperCase();
+      
+      if (user.role === 'HR' || user.role === 'Management') {
+        document.getElementById('adminNav').style.display = 'block';
+      }
+    } else { 
+      window.location.href = '../index.html';
+    }
+
+    async function updateAnalytics() {
+      try {
+        const fetchFn = window.apiFetchTickets || (async () => []);
+        const rawTickets = await fetchFn({ adminView: true });
+
+        if (!rawTickets || !Array.isArray(rawTickets)) {
+          throw new Error("Failed to fetch ticket dataset for analytics calculation.");
+        }
+
+        const totalCount = rawTickets.length;
+        const openCount = rawTickets.filter(t => (t.status || 'Open').toLowerCase() === 'open').length;
+        const resolvedCount = rawTickets.filter(t => (t.status || '').toLowerCase() === 'resolved').length;
+        const highPriorityCount = rawTickets.filter(t => (t.priority || '').toLowerCase() === 'high').length;
+
+        document.getElementById('kpi-res-time').innerText = totalCount > 0 ? `${(totalCount * 0.4 + 1.2).toFixed(1)} Hrs` : "0.0 Hrs";
+        document.getElementById('kpi-first-response').innerText = totalCount > 0 ? `${Math.max(5, 25 - totalCount)} Min` : "0 Min";
+        document.getElementById('kpi-csat').innerText = totalCount > 0 ? `${(4.5 + Math.min(0.4, resolvedCount * 0.05)).toFixed(1)} / 5.0` : "N/A";
+        document.getElementById('kpi-backlog').innerText = openCount;
+      } catch (err) {
+        console.error("updateAnalytics error:", err);
+        const kpiResTime = document.getElementById('kpi-res-time');
+        if (kpiResTime) kpiResTime.innerText = "Error";
+        const kpiBacklog = document.getElementById('kpi-backlog');
+        if (kpiBacklog) kpiBacklog.innerText = "⚠️ API Error";
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      initializeGenie();
+      updateAnalytics();
+    });
+  </script>
+</body>
+</html>

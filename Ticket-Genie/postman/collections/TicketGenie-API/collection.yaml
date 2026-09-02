@@ -1,0 +1,6 @@
+$kind: collection
+name: TicketGenie API
+description: AI-powered HR & IT Helpdesk System
+variables:
+  - key: baseUrl
+    value: 'http://localhost:8000'

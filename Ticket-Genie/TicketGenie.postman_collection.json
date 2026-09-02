@@ -1,0 +1,214 @@
+{
+	"info": {
+		"_postman_id": "c8f3e5b4-7128-49d6-b9a3-ticketgenie01",
+		"name": "TicketGenie API",
+		"description": "Postman Workspace Collection for TicketGenie FastAPI Backend (Local Dev & Testing)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8000",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "System Health",
+			"item": [
+				{
+					"name": "Root Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								""
+							]
+						},
+						"description": "Returns welcome message and operational status of TicketGenie API."
+					},
+					"response": []
+				},
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Health probe for service monitoring."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Tickets Management",
+			"item": [
+				{
+					"name": "List All Tickets",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tickets?status=all&priority=all",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tickets"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "all",
+									"description": "Filter by status: Open, In Progress, Resolved, Pending, or all"
+								},
+								{
+									"key": "priority",
+									"value": "all",
+									"description": "Filter by priority: High, Medium, Low, or all"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search keyword across title, id, category, and description",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Retrieves list of tickets with optional status, priority, or search parameters."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Ticket",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"VPN Connection Issue\",\n  \"category\": \"IT Support\",\n  \"priority\": \"High\",\n  \"department\": \"IT\",\n  \"description\": \"Unable to connect to company VPN network from remote location.\",\n  \"is_anonymous\": false\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/tickets",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tickets"
+							]
+						},
+						"description": "Creates a new support request ticket."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Ticket by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/tickets/HD-1024",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tickets",
+								"HD-1024"
+							]
+						},
+						"description": "Fetches single ticket details by ticket ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Ticket",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"In Progress\",\n  \"priority\": \"High\",\n  \"department\": \"IT\",\n  \"description\": \"Updated ticket details with troubleshooting notes.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/tickets/HD-1024",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"tickets",
+								"HD-1024"
+							]
+						},
+						"description": "Updates fields on an existing ticket."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Genie AI Assistant",
+			"item": [
+				{
+					"name": "Genie Chat",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"message\": \"How do I check my payroll statement?\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/genie/chat",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"genie",
+								"chat"
+							]
+						},
+						"description": "Sends user query to AI Genie assistant for automated help and route suggestions."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

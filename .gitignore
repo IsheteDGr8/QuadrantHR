@@ -1,0 +1,49 @@
+# --- secrets & local env ---
+.env
+.env.*
+!.env.example
+**/.env
+!**/.env.example
+
+# --- Python ---
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/
+**/*.db
+**/*.sqlite3
+
+# --- Node ---
+**/node_modules/
+**/dist/
+**/.next/
+**/build/
+**/.turbo/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Docker / logs ---
+**/*.log
+**/server.log*
+
+# --- Azure / local tooling ---
+**/.azure/
+**/azurite/
+**/local.settings.json
+
+# --- Large / generated artifacts ---
+**/*.pdf
+!**/docs/**/*.pdf
+**/data/output/
+ResumeScreening/**/resume_assistant.db

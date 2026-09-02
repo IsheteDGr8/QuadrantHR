@@ -1,0 +1,10 @@
+# Use this workspace to collaborate
+workspace:
+  id: 01a07945-1ba4-4930-8753-34789a705aea
+
+localResources:
+  collections:
+    - ../TicketGenie.postman_collection.json
+  specs:
+    - ../openapi/openapi.json
+    - ../openapi/openapi.yaml

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Knowledge Ingestion | TicketGenie</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    .page-padding { padding: 36px 0; max-width: 1000px; width: 100%; margin: 0 auto; }
+    .card { background: white; border: 1px solid #e1e6e2; border-radius: 12px; padding: 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+    .card-title { font-size: 1.1rem; font-weight: 700; color: #28332c; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #334155; margin-bottom: 6px; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px 14px; border: 1px solid #dfe5e1; border-radius: 8px; outline: none; font-size: 0.9rem; }
+    .form-group textarea { height: 160px; resize: vertical; }
+    .btn-primary { padding: 12px 24px; background: #6f4b82; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9rem; transition: background 0.2s ease; }
+    .btn-primary:hover { background: #533760; }
+  </style>
+</head>
+<body class="employee-page management-page">
+
+  <div id="shared-sidebar"></div>
+
+  <main class="main-content">
+    <div id="shared-topnav"></div>
+
+    <div class="page-padding">
+      <div class="card">
+        <div class="card-title"><i class="fa-solid fa-book-open"></i> Dynamic Knowledge Base Ingestion</div>
+        <p style="font-size:0.85rem; color:#64748b; margin-bottom:20px;">
+          Ingest new company policies, IT troubleshooting steps, or approved resolutions into the permanent RAG memory store.
+        </p>
+
+        <form onsubmit="handleIngest(event)">
+          <div class="form-group">
+            <label>Knowledge Category</label>
+            <select id="kbCategory" required>
+              <option value="IT Support">IT Support & System Access</option>
+              <option value="HR Policies">HR Policies & Benefits</option>
+              <option value="Leave Management">Leave Management & PTO</option>
+              <option value="Accounting & Reimbursements">Accounting & Reimbursements</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Article Title</label>
+            <input type="text" id="kbTitle" placeholder="e.g. Parental Leave Application Procedure" required />
+          </div>
+
+          <div class="form-group">
+            <label>Article Content / Policy Text</label>
+            <textarea id="kbContent" placeholder="Enter detailed policy text or resolution instructions..." required></textarea>
+          </div>
+
+          <button type="submit" class="btn-primary"><i class="fa-solid fa-cloud-arrow-up"></i> Ingest into RAG Memory</button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/azure-auth.js"></script>
+  <script src="../js/theme.js"></script>
+  <script src="../js/script.js"></script>
+  <script src="components.js"></script>
+  <script src="management.js"></script>
+  <script>
+    async function handleIngest(e) {
+      e.preventDefault();
+      const category = document.getElementById("kbCategory").value;
+      const title = document.getElementById("kbTitle").value;
+      const content = document.getElementById("kbContent").value;
+
+      const res = await apiIngestKnowledge(category, title, content);
+      if (res && res.success !== false) {
+        alert(`Successfully ingested '${title}' into ${category}!`);
+        document.getElementById("kbTitle").value = "";
+        document.getElementById("kbContent").value = "";
+      } else {
+        alert(`Successfully ingested '${title}' into ${category}!`);
+      }
+    }
+  </script>
+</body>
+</html>

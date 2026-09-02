@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    // Access Restricted / Disabled Page Guard
+    window.location.href = "index.html";
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding & Visas | TicketGenie Management</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <style>
+    /* Specific Onboarding Content Styles */
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; margin-top: 24px; }
+    .page-header h1 { font-size: 1.75rem; color: #111827; font-weight: 600; }
+    .page-header p { color: #6b7280; font-size: 0.9rem; margin-top: 4px; }
+    .btn-primary { background-color: #2b1b36; color: #ffffff; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; transition: 0.2s; }
+    .btn-primary:hover { background-color: #533760; }
+
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 32px; }
+    .card { background-color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #e1e6e2; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+    .card-title { font-size: 0.85rem; color: #6b7280; margin-bottom: 8px; font-weight: 600; text-transform: uppercase; }
+    .card-value { font-size: 2rem; font-weight: bold; color: #111827; margin-bottom: 4px; }
+
+    .pipeline-card { background: white; border-radius: 12px; border: 1px solid #e1e6e2; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+    .pipeline-card h3 { font-size: 1.1rem; color: #111827; margin-bottom: 16px; border-bottom: 1px solid #e1e6e2; padding-bottom: 12px; font-weight: 600; }
+    
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 0.75rem; color: #6b7280; text-transform: uppercase; padding-bottom: 12px; border-bottom: 1px solid #e1e6e2; }
+    td { padding: 16px 0; border-bottom: 1px solid #f3f4f6; font-size: 0.9rem; color: #374151; vertical-align: middle; }
+    
+    .employee-info { display: flex; align-items: center; gap: 12px; }
+    .avatar-emp { width: 36px; height: 36px; background-color: #e0e7ff; color: #4f46e5; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 0.9rem; }
+    .emp-name { font-weight: 600; color: #111827; }
+    .emp-role { font-size: 0.75rem; color: #6b7280; }
+
+    .tag { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    .tag-onboard { background: #f3e8ff; color: #7e22ce; }
+    .tag-offboard { background: #f3f4f6; color: #475569; }
+    .tag-visa { background: #fef08a; color: #854d0e; }
+    
+    .genie-status { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 500; }
+    .genie-good { color: #8b5cf6; }
+    .genie-warn { color: #ea580c; }
+    .action-link { color: #4f46e5; text-decoration: none; font-weight: 600; font-size: 0.85rem; }
+    .action-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body class="employee-page management-page">
+
+  <div id="shared-sidebar"></div>
+
+  <main class="main-content">
+    <div id="shared-topnav"></div>
+    
+    <header class="page-header">
+      <div>
+        <h1>Onboarding & Immigration Pipeline</h1>
+        <p>Track new hires, departures, and let Genie AI verify OPT and Visa documents.</p>
+      </div>
+    <header class="page-header">
+      <div>
+        <h1>Onboarding & Immigration Pipeline</h1>
+        <p>Track new hires, departures, and let Genie AI verify OPT and Visa documents.</p>
+      </div>
+      <button class="btn-primary" onclick="promptNewOnboarding()">+ Start New Process</button>
+    </header>
+
+    <div class="metrics-grid">
+      <div class="card">
+        <div class="card-title">Active Onboardings</div>
+        <div class="card-value" id="onbActive">0</div>
+        <div style="font-size: 0.75rem; color: #8b5cf6; font-weight: 600;">Live in Database</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Pending Visas / OPT</div>
+        <div class="card-value" id="onbVisa">0</div>
+        <div style="font-size: 0.75rem; color: #ea580c; font-weight: 600;">H-1B / OPT candidates</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Completed Onboardings</div>
+        <div class="card-value" id="onbCompleted">0</div>
+        <div style="font-size: 0.75rem; color: #16a34a; font-weight: 600;">Fully verified</div>
+      </div>
+    </div>
+
+    <div class="pipeline-card">
+      <h3>Active Employee Pipeline</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Department & Role</th>
+            <th>Visa Status</th>
+            <th>Start Date</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="onboardingTableBody">
+          <tr><td colspan="6" style="text-align:center;">Loading onboarding records...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/azure-auth.js"></script>
+  <script src="../js/theme.js"></script>
+  <script src="components.js"></script>
+  <script src="management.js"></script>
+  <script>
+  document.addEventListener("DOMContentLoaded", async () => {
+    loadOnboardingData();
+  });
+
+  async function loadOnboardingData() {
+    try {
+      const records = await apiFetchOnboarding();
+      document.getElementById("onbActive").textContent = records.length;
+      document.getElementById("onbVisa").textContent = records.filter(r => (r.visa_status||"").includes("H1") || (r.visa_status||"").includes("OPT")).length;
+      document.getElementById("onbCompleted").textContent = records.filter(r => (r.status||"").toLowerCase() === "completed").length;
+
+      const tbody = document.getElementById("onboardingTableBody");
+      if (!records || records.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No onboarding records found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = records.map(r => `
+        <tr>
+          <td>
+            <div class="employee-info">
+              <div class="avatar-emp">${r.employee_name ? r.employee_name.substring(0,2).toUpperCase() : 'EM'}</div>
+              <div>
+                <div class="emp-name">${escapeHTML(r.employee_name)}</div>
+                <div class="emp-role">ID: #${r.id}</div>
+              </div>
+            </div>
+          </td>
+          <td><strong>${escapeHTML(r.department)}</strong><br><span style="font-size:12px; color:#64748b;">${escapeHTML(r.role)}</span></td>
+          <td><span class="tag tag-visa">${escapeHTML(r.visa_status || 'H1-B / OPT')}</span></td>
+          <td>${r.start_date || '2026-09-01'}</td>
+          <td><span class="tag tag-onboard">${escapeHTML(r.status || 'In Progress')}</span></td>
+          <td>
+            ${r.status !== 'Completed' ? `
+              <button onclick="markOnbCompleted('${r.id}')" style="background:#16a34a; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer;">Mark Complete</button>
+            ` : '<span style="font-size:12px; color:#16a34a;">✓ Verified</span>'}
+          </td>
+        </tr>
+      `).join("");
+    } catch (err) {
+      console.error("Failed to load onboarding records:", err);
+    }
+  }
+
+  async function promptNewOnboarding() {
+    const name = prompt("Enter Candidate Full Name:");
+    if (!name) return;
+    const role = prompt("Enter Job Role (e.g. Frontend Engineer):") || "Software Engineer";
+    const dept = prompt("Enter Department (e.g. IT Engineering):") || "IT Engineering";
+    const visa = prompt("Enter Visa Status (e.g. H-1B, OPT STEM):") || "OPT STEM";
+
+    await apiCreateOnboarding({ employee_name: name, role: role, department: dept, visa_status: visa });
+    alert(`Candidate '${name}' added to onboarding database!`);
+    loadOnboardingData();
+  }
+
+  async function markOnbCompleted(recId) {
+    await apiUpdateOnboardingStatus(recId, "Completed");
+    loadOnboardingData();
+  }
+  </script>
+</body>
+</html>
+

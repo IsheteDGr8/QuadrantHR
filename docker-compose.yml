@@ -1,0 +1,112 @@
+# QuadrantHR — local orchestration for legacy hackathon services.
+# API containers only in Phase 0; frontends still run via Vite/Next locally.
+#
+# Usage:
+#   docker compose up --build -d
+#   docker compose ps
+#
+# Incoming modules (Policy Generator / FAQ) may land as new folders;
+# Bug Busters already provides a policy-generator API on :8106.
+
+name: quadranthr
+
+networks:
+  quadranthr-net:
+    driver: bridge
+
+services:
+  employee-directory:
+    build:
+      context: ./EmployeeDirectory
+      dockerfile: Dockerfile
+    container_name: quadranthr-employee-directory
+    ports:
+      - "8101:8000"
+    environment:
+      ALLOW_DEV_AUTH: "1"
+      AUTH_MODE: dev
+      DATABASE_URL: sqlite:///directory.db
+    networks:
+      - quadranthr-net
+    restart: unless-stopped
+
+  resume-screening:
+    build:
+      context: ./ResumeScreening
+      dockerfile: Dockerfile
+    container_name: quadranthr-resume-screening
+    ports:
+      - "8102:8000"
+    environment:
+      USE_MOCK_AZURE: "true"
+    networks:
+      - quadranthr-net
+    restart: unless-stopped
+
+  ticket-genie:
+    build:
+      context: ./Ticket-Genie
+      dockerfile: Dockerfile
+      target: backend
+    container_name: quadranthr-ticket-genie
+    ports:
+      - "8103:8000"
+    environment:
+      PORT: "8000"
+      DATABASE_URL: sqlite:////data/ticketgenie.db
+      USE_MOCK_AI: "true"
+    volumes:
+      - ticketgenie-data:/data
+    networks:
+      - quadranthr-net
+    restart: unless-stopped
+
+  training-portal:
+    build:
+      context: ./TrainingPortal
+      dockerfile: Dockerfile
+    container_name: quadranthr-training-portal
+    ports:
+      - "8104:8000"
+    environment:
+      PORT: "8000"
+      QUIZGEN_PROVIDER: mock
+      PYTHONPATH: /app/src
+    networks:
+      - quadranthr-net
+    restart: unless-stopped
+
+  hr-copilot:
+    build:
+      context: ./ClosedAI
+      dockerfile: Dockerfile
+    container_name: quadranthr-hr-copilot
+    ports:
+      - "8105:8001"
+    environment:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+      # Optional: set SESSION_API_KEY in .env for authenticated binds
+      SESSION_API_KEY: ${SESSION_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+    networks:
+      - quadranthr-net
+    restart: unless-stopped
+
+  # Present in-repo today (Bug Busters). Treat as the Policy Generator slot;
+  # a dedicated FAQ chatbot service can be added on :8107 when that codebase lands.
+  policy-generator:
+    build:
+      context: "./Bug Busters"
+      dockerfile: Dockerfile
+    container_name: quadranthr-policy-generator
+    ports:
+      - "8106:8000"
+    networks:
+      - quadranthr-net
+    restart: unless-stopped
+    profiles:
+      - full
+
+volumes:
+  ticketgenie-data:

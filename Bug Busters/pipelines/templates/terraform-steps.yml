@@ -1,0 +1,100 @@
+# Reusable steps for running Terraform. Adapted to THIS repo's structure:
+# terraform files live at /terraform (not /infra/terraform).
+#
+# Expects these pipeline variables via a variable group:
+#   AZURE_SERVICE_CONNECTION, TF_STATE_RG, TF_STATE_SA, TF_STATE_CONTAINER
+
+parameters:
+  - name: command
+    type: string
+    values:
+      - plan
+      - apply
+  - name: workingDir
+    type: string
+    default: 'terraform'
+
+steps:
+  - task: TerraformInstaller@1
+    displayName: 'Install Terraform'
+    inputs:
+      terraformVersion: '1.7.5'
+
+  - task: AzureCLI@2
+    displayName: 'Terraform Init'
+    inputs:
+      azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+      scriptType: bash
+      scriptLocation: inlineScript
+      workingDirectory: '${{ parameters.workingDir }}'
+      addSpnToEnvironment: true
+      inlineScript: |
+        set -e
+        export ARM_USE_OIDC=true
+        export ARM_CLIENT_ID=$servicePrincipalId
+        export ARM_OIDC_TOKEN=$idToken
+        export ARM_TENANT_ID=$tenantId
+        export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+        terraform init \
+          -backend-config="resource_group_name=$(TF_STATE_RG)" \
+          -backend-config="storage_account_name=$(TF_STATE_SA)" \
+          -backend-config="container_name=$(TF_STATE_CONTAINER)" \
+          -backend-config="key=app.terraform.tfstate"
+
+  - task: AzureCLI@2
+    displayName: 'Terraform fmt & Validate'
+    inputs:
+      azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+      scriptType: bash
+      scriptLocation: inlineScript
+      workingDirectory: '${{ parameters.workingDir }}'
+      inlineScript: |
+        set -e
+        # Auto-fix formatting rather than failing the build on cosmetic
+        # spacing mismatches — run `terraform fmt` locally before committing
+        # if you want your local diff to already match this.
+        terraform fmt -recursive
+        terraform validate
+
+  - task: AzureCLI@2
+    displayName: 'Terraform Plan'
+    inputs:
+      azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+      scriptType: bash
+      scriptLocation: inlineScript
+      workingDirectory: '${{ parameters.workingDir }}'
+      addSpnToEnvironment: true
+      inlineScript: |
+        set -e
+        export ARM_USE_OIDC=true
+        export ARM_CLIENT_ID=$servicePrincipalId
+        export ARM_OIDC_TOKEN=$idToken
+        export ARM_TENANT_ID=$tenantId
+        export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+        terraform plan -out=tfplan
+    env:
+      TF_VAR_azure_openai_endpoint: $(AZURE_OPENAI_ENDPOINT)
+      TF_VAR_azure_openai_api_key: $(AZURE_OPENAI_API_KEY)
+      TF_VAR_azure_openai_deployment: $(AZURE_OPENAI_DEPLOYMENT)
+
+  - ${{ if eq(parameters.command, 'apply') }}:
+    - task: AzureCLI@2
+      displayName: 'Terraform Apply'
+      inputs:
+        azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+        scriptType: bash
+        scriptLocation: inlineScript
+        workingDirectory: '${{ parameters.workingDir }}'
+        addSpnToEnvironment: true
+        inlineScript: |
+          set -e
+          export ARM_USE_OIDC=true
+          export ARM_CLIENT_ID=$servicePrincipalId
+          export ARM_OIDC_TOKEN=$idToken
+          export ARM_TENANT_ID=$tenantId
+          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          terraform apply -auto-approve tfplan
+      env:
+        TF_VAR_azure_openai_endpoint: $(AZURE_OPENAI_ENDPOINT)
+        TF_VAR_azure_openai_api_key: $(AZURE_OPENAI_API_KEY)
+        TF_VAR_azure_openai_deployment: $(AZURE_OPENAI_DEPLOYMENT)

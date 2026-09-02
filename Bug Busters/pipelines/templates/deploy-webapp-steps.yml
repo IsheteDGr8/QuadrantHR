@@ -1,0 +1,37 @@
+parameters:
+  - name: appName
+    type: string
+  - name: packagePath
+    type: string
+
+steps:
+  - task: AzureWebApp@1
+    displayName: 'Deploy to ${{ parameters.appName }}'
+    inputs:
+      azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+      appType: 'webAppLinux'
+      appName: '${{ parameters.appName }}'
+      package: '${{ parameters.packagePath }}'
+      deploymentMethod: 'zipDeploy'
+
+  - task: AzureCLI@2
+    displayName: 'Smoke test ${{ parameters.appName }}'
+    inputs:
+      azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -e
+        URL="https://$(az webapp show -g $(RESOURCE_GROUP) -n ${{ parameters.appName }} --query defaultHostName -o tsv)"
+        echo "Checking $URL ..."
+        for i in 1 2 3 4 5; do
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+          if [ "$STATUS" -lt 500 ]; then
+            echo "App responded with $STATUS"
+            exit 0
+          fi
+          echo "Attempt $i: got $STATUS, retrying in 15s..."
+          sleep 15
+        done
+        echo "##vso[task.logissue type=error]Smoke test failed after deploy"
+        exit 1

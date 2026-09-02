@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TicketGenie - Calendar</title>
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    /* --- SHARED CORE STYLES --- */
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { display: flex; height: 100vh; background-color: #f9fafb; color: #1f2937; margin: 0; overflow: hidden; }
+
+    /* --- SIDEBAR --- */
+    .sidebar { width: 260px; background-color: #2b1b38; color: #d1d5db; display: flex; flex-direction: column; flex-shrink: 0; justify-content: space-between; z-index: 10; transition: width 0.3s ease; white-space: nowrap; overflow-x: hidden; }
+    .sidebar.collapsed { width: 80px; }
+    .sidebar-top { flex: 1; }
+    .sidebar-header { padding: 24px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .bot-icon { background: rgba(255,255,255,0.1); color: #facc15; padding: 8px; border-radius: 8px; font-size: 1.4rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .sidebar-brand-text h2 { color: #ffffff; font-size: 1.1rem; font-weight: 600; margin-bottom: 2px; }
+    .sidebar-brand-text span { display: block; font-size: 0.65rem; color: #a5b4fc; text-transform: uppercase; letter-spacing: 1px; }
+
+    .nav-section { margin-top: 24px; }
+    .nav-title { font-size: 0.65rem; color: #818cf8; text-transform: uppercase; font-weight: 700; margin: 0 16px 8px; letter-spacing: 1px; transition: opacity 0.2s; }
+    .nav-link { display: flex; align-items: center; gap: 12px; padding: 10px 16px; margin: 0 8px 4px; color: #d1d5db; text-decoration: none; font-size: 0.85rem; border-radius: 8px; transition: 0.2s; }
+    .nav-link:hover { background-color: rgba(255,255,255,0.05); color: #ffffff; }
+    .nav-link.active { background-color: rgba(255,255,255,0.12); color: #ffffff; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); }
+    .menu-icon { font-size: 1.25rem; flex-shrink: 0; display: flex; justify-content: center; width: 24px; }
+    .nav-link.active .menu-icon { color: #a5b4fc; }
+
+    .sidebar-footer { padding: 24px; font-size: 0.75rem; color: #a5b4fc; border-top: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 8px; }
+    .status-dot { width: 8px; height: 8px; background-color: #10b981; border-radius: 50%; flex-shrink: 0; }
+
+    .sidebar.collapsed .sidebar-brand-text, .sidebar.collapsed .nav-title, .sidebar.collapsed .menu-text, .sidebar.collapsed .sidebar-footer-text { display: none; }
+    .sidebar.collapsed .sidebar-header { justify-content: center; padding: 24px 0; }
+    .sidebar.collapsed .nav-link { justify-content: center; padding: 14px 0; margin: 0 8px 8px; }
+    .sidebar.collapsed .nav-link span:not(.menu-icon) { display: none; }
+    .sidebar.collapsed .sidebar-footer { justify-content: center; padding: 24px 0; }
+
+    /* --- MAIN CONTENT & TOP NAV --- */
+    .main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; position: relative; }
+    .top-nav { display: flex; justify-content: space-between; align-items: center; padding: 16px 32px; background: #ffffff; border-bottom: 1px solid #e5e7eb; }
+    .nav-left-cluster { display: flex; align-items: center; gap: 16px; }
+    .btn-hamburger { background: white; border: 1px solid #e5e7eb; border-radius: 8px; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: #6b7280; transition: 0.2s; }
+    .btn-hamburger:hover { background: #f3f4f6; color: #111827; box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.15); border-color: #d1d5db; }
+    .nav-actions { display: flex; align-items: center; gap: 16px; }
+    .nav-icon-btn { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: #6b7280; transition: 0.2s; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 50%; }
+    .nav-icon-btn:hover { color: #f59e0b; background: #fffbeb; }
+    .user-profile { display: flex; align-items: center; gap: 12px; font-size: 0.85rem; padding-left: 16px; border-left: 1px solid #e5e7eb; }
+    .avatar { width: 32px; height: 32px; background: #eef2ff; color: #4f46e5; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 0.75rem; font-weight: bold; }
+
+    /* --- PAGE CONTENT --- */
+    .page-padding { padding: 40px; max-width: 1400px; margin: 0 auto; width: 100%; }
+    .eyebrow-text { font-size: 0.7rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .page-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    .page-title { font-size: 1.75rem; color: #111827; font-weight: 600; }
+
+    /* --- CALENDAR LAYOUT --- */
+    .calendar-layout { display: flex; gap: 24px; align-items: flex-start; }
+    .calendar-sidebar { width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
+    .calendar-main { flex: 1; min-width: 0; }
+
+    .panel-card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .panel-card h4 { font-size: 0.95rem; color: #111827; font-weight: 600; margin-bottom: 14px; }
+
+    .filter-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 0.85rem; color: #374151; cursor: pointer; user-select: none; }
+    .filter-item input { width: 16px; height: 16px; accent-color: #4f46e5; cursor: pointer; }
+    .filter-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+    .btn-primary { background: #2b1b38; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; transition: 0.2s; }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-outline { background: white; color: #374151; border: 1px solid #d1d5db; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; transition: 0.2s; margin-top: 8px; }
+    .btn-outline:hover { background: #f3f4f6; }
+
+    .legend-list { display: flex; flex-direction: column; gap: 8px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #4b5563; }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
+    /* Calendar toolbar */
+    .cal-toolbar { display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #e5e7eb; border-radius: 12px 12px 0 0; padding: 16px 20px; }
+    .cal-nav-cluster { display: flex; align-items: center; gap: 12px; }
+    .cal-nav-btn { background: white; border: 1px solid #d1d5db; border-radius: 8px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4b5563; transition: 0.2s; }
+    .cal-nav-btn:hover { background: #f3f4f6; }
+    .cal-today-btn { background: white; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 14px; font-size: 0.8rem; font-weight: 600; color: #374151; cursor: pointer; transition: 0.2s; }
+    .cal-today-btn:hover { background: #f3f4f6; }
+    .cal-period-label { font-size: 1.1rem; font-weight: 600; color: #111827; }
+    .view-toggle-group { display: flex; background: #f3f4f6; border-radius: 8px; padding: 4px; gap: 2px; }
+    .view-toggle-btn { border: none; background: transparent; padding: 7px 16px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; color: #6b7280; cursor: pointer; transition: 0.2s; }
+    .view-toggle-btn.active { background: white; color: #111827; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+
+    .cal-body-card { background: white; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+
+    /* Month grid */
+    .month-grid-head { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid #e5e7eb; }
+    .month-grid-head div { padding: 10px; text-align: center; font-size: 0.7rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+    .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 118px; }
+    .month-cell { border-right: 1px solid #f3f4f6; border-bottom: 1px solid #f3f4f6; padding: 8px; overflow: hidden; position: relative; transition: background 0.15s; }
+    .month-cell:nth-child(7n) { border-right: none; }
+    .month-cell.other-month { background: #fafafa; }
+    .month-cell.other-month .cell-date { color: #d1d5db; }
+    .month-cell.today { background: #f5f3ff; }
+    .month-cell.drag-over { background: #eef2ff; box-shadow: inset 0 0 0 2px #a5b4fc; }
+    .cell-date { font-size: 0.8rem; font-weight: 600; color: #374151; margin-bottom: 4px; display: inline-block; }
+    .cell-date.is-today { background: #4f46e5; color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; }
+    .cell-events { display: flex; flex-direction: column; gap: 3px; max-height: 74px; overflow: hidden; }
+    .cell-more { font-size: 0.7rem; color: #6b7280; margin-top: 2px; cursor: pointer; }
+
+    .event-pill { border: none; border-radius: 6px; padding: 3px 7px; font-size: 0.7rem; font-weight: 600; color: white; text-align: left; cursor: grab; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; width: 100%; }
+    .event-pill:active { cursor: grabbing; }
+    .event-pill.dragging { opacity: 0.4; }
+
+    .pill-pto { background: #16a34a; }
+    .pill-maintenance { background: #dc2626; }
+    .pill-sla { background: #2563eb; }
+    .pill-onboarding { background: #d97706; }
+    .pill-offboarding { background: #6b7280; }
+
+    /* Week / Day views */
+    .time-grid-wrap { display: flex; flex-direction: column; max-height: 640px; overflow-y: auto; }
+    .time-grid-head { display: grid; position: sticky; top: 0; background: white; z-index: 2; border-bottom: 1px solid #e5e7eb; }
+    .time-grid-head-col { padding: 10px; text-align: center; border-left: 1px solid #f3f4f6; }
+    .time-grid-head-col .dow { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; font-weight: 700; }
+    .time-grid-head-col .dnum { font-size: 1rem; font-weight: 600; color: #111827; margin-top: 2px; }
+    .time-grid-body { display: grid; }
+    .time-col-labels { display: flex; flex-direction: column; }
+    .time-label { height: 56px; font-size: 0.7rem; color: #9ca3af; text-align: right; padding-right: 8px; transform: translateY(-6px); }
+    .time-day-col { border-left: 1px solid #f3f4f6; position: relative; }
+    .time-slot { height: 56px; border-bottom: 1px solid #f3f4f6; }
+    .time-event { position: absolute; left: 4px; right: 4px; border-radius: 6px; padding: 4px 6px; font-size: 0.7rem; font-weight: 600; color: white; cursor: pointer; overflow: hidden; }
+
+    /* Popover */
+    .event-popover { position: fixed; z-index: 2000; width: 280px; background: white; border-radius: 12px; box-shadow: 0 18px 45px rgba(43,27,54,0.25); border: 1px solid #e5e7eb; display: none; overflow: hidden; }
+    .event-popover.open { display: block; animation: genieOpen 0.15s ease-out; }
+    .popover-header { padding: 14px 16px; color: white; display: flex; justify-content: space-between; align-items: center; }
+    .popover-header h5 { font-size: 0.9rem; font-weight: 600; }
+    .popover-close { background: rgba(255,255,255,0.15); border: none; color: white; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .popover-body { padding: 14px 16px; }
+    .popover-row { display: flex; gap: 8px; font-size: 0.8rem; color: #4b5563; margin-bottom: 8px; align-items: flex-start; }
+    .popover-row i { color: #9ca3af; margin-top: 2px; }
+    .popover-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.8rem; color: #4f46e5; font-weight: 600; text-decoration: none; }
+    .popover-link:hover { text-decoration: underline; }
+    .popover-overlay { position: fixed; inset: 0; z-index: 1999; display: none; }
+    .popover-overlay.open { display: block; }
+
+    @keyframes genieOpen { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Genie Chatbot Styles */
+    .genie-container { position: fixed; bottom: 28px; right: 28px; z-index: 1000; }
+    .genie-button { height: 45px; padding: 0 17px; border: none; border-radius: 23px; background: #2b1b38; color: white; display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15); cursor: pointer; transition: 0.2s; }
+    .genie-button:hover { background: #4f46e5; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(79,70,229,0.3); }
+    .genie-button i { font-size: 1.1rem; color: #facc15; }
+    .genie-chat { position: fixed; right: 28px; bottom: 85px; width: 355px; height: 505px; background: white; border: 1px solid #dfe5e1; border-radius: 12px; box-shadow: 0 18px 45px rgba(43,27,54,0.18); display: none; flex-direction: column; overflow: hidden; z-index: 999; }
+    .genie-chat.open { display: flex; animation: genieOpen 0.2s ease-out; }
+    .genie-chat-header { height: 68px; padding: 0 16px; background: #2b1b38; color: white; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .genie-header-info { display: flex; align-items: center; gap: 10px; }
+    .genie-avatar { width: 34px; height: 34px; border-radius: 8px; background: #6f4b82; display: flex; align-items: center; justify-content: center; color: white; }
+    .genie-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; }
+    .genie-close { width: 30px; height: 30px; border: none; background: transparent; color: #a0aaa4; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    .genie-close:hover { color: white; background: rgba(255,255,255,0.1); }
+    .genie-messages { flex: 1; overflow-y: auto; padding: 18px 15px; background: #fafcfb; }
+    .genie-message { display: flex; gap: 8px; margin-bottom: 15px; }
+    .genie-message-avatar { width: 26px; height: 26px; border-radius: 7px; background: #f1ebf4; color: #6f4b82; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10px; }
+    .genie-bubble { max-width: 255px; background: white; border: 1px solid #e1e6e2; border-radius: 5px 10px 10px 10px; padding: 10px 12px; color: #5f6b63; font-size: 0.85rem; line-height: 1.55; }
+    .genie-message-user { justify-content: flex-end; }
+    .genie-message-user .genie-bubble { background: #6f4b82; color: white; border-color: #6f4b82; border-radius: 10px 5px 10px 10px; }
+    .genie-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: 34px; margin-bottom: 12px; }
+    .genie-suggestion { border: 1px solid #d2c6d6; background: white; color: #6f4b82; border-radius: 15px; padding: 6px 10px; font-size: 0.8rem; cursor: pointer; transition: 0.2s; }
+    .genie-suggestion:hover { background: #f1ebf4; }
+    .genie-input-area { min-height: 58px; padding: 10px; border-top: 1px solid #e5eae6; background: white; display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+    .genie-input-area input { flex: 1; height: 37px; border: 1px solid #dfe5e1; border-radius: 7px; padding: 0 11px; outline: none; font-size: 0.85rem; }
+    .genie-input-area input:focus { border-color: #6f4b82; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+    .genie-input-area button { width: 37px; height: 37px; flex-shrink: 0; border: none; border-radius: 7px; background: #6f4b82; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+    .genie-input-area button:hover { background: #533760; }
+    .genie-disclaimer { padding: 0 12px 9px; background: white; color: #a0a8a3; text-align: center; font-size: 0.7rem; }
+  </style>
+</head>
+<body class="admin-page">
+
+  <aside class="sidebar" id="appSidebar">
+    <div class="sidebar-top">
+      <div class="sidebar-header">
+        <div class="bot-icon"><i class="ph-fill ph-ticket"></i></div>
+        <div class="sidebar-brand-text"><h2>TicketGenie</h2><span id="sidebarRole">Unified Portal</span></div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-title">Workspace</div>
+        <a href="admin_dashboard.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-chart-pie-slice"></i></span><span class="menu-text">My Dashboard</span></a>
+        <a href="announcements.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-megaphone"></i></span><span class="menu-text">Announcements</span></a>
+        <a href="analytics.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-trend-up"></i></span><span class="menu-text">Analytics</span></a>
+        <a href="calendar.html" class="nav-link active"><span class="menu-icon"><i class="ph-duotone ph-calendar-blank"></i></span><span class="menu-text">Calendar</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-title">Ticketing System</div>
+        <a href="submit-ticket.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-plus-circle"></i></span><span class="menu-text">Submit Request</span></a>
+        <a href="inbox.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-tray"></i></span><span class="menu-text">Team Inbox</span></a>
+      </div>
+      <div class="nav-section" id="adminNav" style="display: block;">
+        <div class="nav-title">Administration</div>
+        <a href="policy_library.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-books"></i></span><span class="menu-text">Policy Library</span></a>
+        <a href="ticket_archive.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-archive"></i></span><span class="menu-text">Ticket Archive</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-title">Account</div>
+        <a href="settings.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-gear"></i></span><span class="menu-text">Settings</span></a>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="status-dot"></div>
+      <div class="sidebar-footer-text"><div style="color: white; font-weight: 600;">Systems operational</div></div>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="top-nav">
+      <div class="nav-left-cluster"><button class="btn-hamburger" onclick="toggleSidebar()"><i class="ph ph-list"></i></button></div>
+      <div class="nav-actions">
+        <button class="nav-icon-btn" id="darkModeToggle" type="button" aria-label="Toggle Dark Mode"><i class="ph-fill ph-moon" id="darkModeIcon"></i></button><button class="nav-icon-btn"><i class="ph-fill ph-bell"></i></button>
+        <div class="user-profile"><div style="text-align: right;"><div id="navName" style="color: #111827;">User</div><div id="navSubRole" style="font-size: 0.7rem; color: #6b7280;">Role</div></div><div class="avatar" id="navAvatar">U</div></div>
+      </div>
+    </div>
+
+    <div class="page-padding">
+      <div class="page-title-row">
+        <div>
+          <div class="eyebrow-text">Operations Overview</div>
+          <h1 class="page-title">Portal Calendar</h1>
+        </div>
+      </div>
+
+      <div class="calendar-layout">
+        <div class="calendar-sidebar">
+          <div class="panel-card">
+            <h4>Quick Filters</h4>
+            <label class="filter-item"><input type="checkbox" class="cal-filter" data-type="pto" checked><span class="filter-dot pill-pto"></span> Approved Time Off</label>
+            <label class="filter-item"><input type="checkbox" class="cal-filter" data-type="maintenance" checked><span class="filter-dot pill-maintenance"></span> Server Maintenance</label>
+            <label class="filter-item"><input type="checkbox" class="cal-filter" data-type="sla" checked><span class="filter-dot pill-sla"></span> Ticket / SLA Deadlines</label>
+            <label class="filter-item"><input type="checkbox" class="cal-filter" data-type="onboarding" checked><span class="filter-dot pill-onboarding"></span> Onboarding</label>
+            <label class="filter-item"><input type="checkbox" class="cal-filter" data-type="offboarding" checked><span class="filter-dot pill-offboarding"></span> Offboarding</label>
+          </div>
+
+          <div class="panel-card">
+            <h4>Sync & Export</h4>
+            <button class="btn-primary" id="syncOutlookBtn"><i class="ph-fill ph-microsoft-outlook-logo"></i> Sync with Outlook</button>
+            <button class="btn-outline" id="exportGoogleBtn"><i class="ph-bold ph-export"></i> Export to Google Calendar</button>
+          </div>
+
+          <div class="panel-card">
+            <h4>Legend</h4>
+            <div class="legend-list">
+              <div class="legend-item"><span class="legend-swatch pill-pto"></span> PTO / Time Off</div>
+              <div class="legend-item"><span class="legend-swatch pill-maintenance"></span> Server Maintenance</div>
+              <div class="legend-item"><span class="legend-swatch pill-sla"></span> Ticket Deadlines</div>
+              <div class="legend-item"><span class="legend-swatch pill-onboarding"></span> Onboarding</div>
+              <div class="legend-item"><span class="legend-swatch pill-offboarding"></span> Offboarding</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="calendar-main">
+          <div class="cal-toolbar">
+            <div class="cal-nav-cluster">
+              <button class="cal-nav-btn" id="calPrevBtn"><i class="ph-bold ph-caret-left"></i></button>
+              <button class="cal-today-btn" id="calTodayBtn">Today</button>
+              <button class="cal-nav-btn" id="calNextBtn"><i class="ph-bold ph-caret-right"></i></button>
+              <div class="cal-period-label" id="calPeriodLabel">Month</div>
+            </div>
+            <div class="view-toggle-group">
+              <button class="view-toggle-btn" data-view="month">Month</button>
+              <button class="view-toggle-btn" data-view="week">Week</button>
+              <button class="view-toggle-btn" data-view="day">Day</button>
+            </div>
+          </div>
+          <div class="cal-body-card" id="calBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="popover-overlay" id="popoverOverlay"></div>
+    <div class="event-popover" id="eventPopover">
+      <div class="popover-header" id="popoverHeader">
+        <h5 id="popoverTitle">Event</h5>
+        <button class="popover-close" id="popoverCloseBtn"><i class="ph-bold ph-x"></i></button>
+      </div>
+      <div class="popover-body">
+        <div class="popover-row"><i class="ph-bold ph-calendar"></i><span id="popoverDate">-</span></div>
+        <div class="popover-row"><i class="ph-bold ph-tag"></i><span id="popoverType">-</span></div>
+        <div class="popover-row"><i class="ph-bold ph-note"></i><span id="popoverSummary">-</span></div>
+        <a href="#" class="popover-link" id="popoverTicketLink"><i class="ph-bold ph-link"></i> <span id="popoverTicketText">Link to ticket</span></a>
+      </div>
+    </div>
+
+    <div class="genie-container">
+      <button class="genie-button" id="genieButton" type="button"><i class="ph-fill ph-magic-wand"></i> Ask Genie</button>
+      <div class="genie-chat" id="genieChat">
+        <div class="genie-chat-header">
+          <div class="genie-header-info">
+            <div class="genie-avatar"><i class="ph-fill ph-magic-wand"></i></div>
+            <div><strong>Genie AI</strong><span><span class="genie-status-dot"></span> Online</span></div>
+          </div>
+          <button class="genie-close" id="closeGenieButton" type="button"><i class="ph ph-x"></i></button>
+        </div>
+        <div class="genie-messages" id="genieMessages">
+          <div class="genie-message">
+            <div class="genie-message-avatar"><i class="ph-fill ph-magic-wand"></i></div>
+            <div class="genie-bubble">Hi! I'm Genie. Ask me about upcoming PTO, maintenance windows, or SLA deadlines on the calendar.</div>
+          </div>
+          <div class="genie-suggestions">
+            <button class="genie-suggestion" type="button">Who's out this week?</button>
+            <button class="genie-suggestion" type="button">Any SLA deadlines?</button>
+            <button class="genie-suggestion" type="button">Get help</button>
+          </div>
+        </div>
+        <div class="genie-input-area">
+          <input type="text" id="genieInput" placeholder="Ask Genie something..." autocomplete="off">
+          <button type="button" id="genieSendButton"><i class="ph-fill ph-arrow-up"></i></button>
+        </div>
+        <div class="genie-disclaimer">Genie may occasionally provide inaccurate information.</div>
+      </div>
+    </div>
+  </main>
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/api.js"></script>
+  <script src="../js/azure-auth.js"></script>
+  <script src="../js/theme.js"></script>
+  <script src="../js/script.js"></script>
+  <script src="../js/calendar.js"></script>
+  <script>
+    function toggleSidebar() { document.getElementById('appSidebar').classList.toggle('collapsed'); }
+    const userDataString = sessionStorage.getItem('portalUser') || localStorage.getItem('portalUser');
+    if (userDataString) {
+      const user = JSON.parse(userDataString);
+      document.getElementById('sidebarRole').innerText = `${user.role} Portal`;
+      document.getElementById('navName').innerText = user.name;
+      document.getElementById('navSubRole').innerText = `${user.role} Admin`;
+      document.getElementById('navAvatar').innerText = user.name.charAt(0).toUpperCase();
+      document.getElementById('adminNav').style.display = 'block';
+    } else { window.location.href = '../index.html'; }
+    initializeGenie();
+    initializeCalendarPage();
+  </script>
+</body>
+</html>

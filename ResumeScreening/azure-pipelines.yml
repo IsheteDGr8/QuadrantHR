@@ -1,0 +1,366 @@
+# Azure DevOps pipeline — APP CI/CD only (build + deploy backend & frontend
+# code onto the App Service and storage account Terraform already
+# provisions). Does NOT run Terraform — infra provisioning is GitHub
+# Actions' job (see .github/workflows/terraform-*.yml). This split matches
+# DOCUMENTATION.md's architecture line:
+#   Terraform → GitHub Actions (plan/apply) → Azure DevOps (app CI/CD)
+#
+# PLACEMENT: this file assumes it lives at the ROOT of diyakamboj/teamrocket
+# (sibling to backend/ and frontend/), not under infra/ — unlike the
+# Terraform files, this pipeline builds app code that already lives at the
+# repo root on that branch.
+#
+# SERVICE CONNECTION: "TeamRocket-Appservices" (ARM, scoped to the
+# TeamRocket resource group in Quadrant Internship — KNOWN-ISSUES.md #15).
+# Only Contributor-level access is needed here; this pipeline never creates
+# role assignments or touches Key Vault RBAC (see KNOWN-ISSUES.md #12/#13
+# for why that distinction matters).
+#
+# BRANCH: triggers on `main`. `phase-2` merged into `main` 2026-08-18 (per
+# a live check, KNOWN-ISSUES.md #9) — this pipeline has real code to build
+# now.
+#
+# CONFIRMED against frontend/.env.example: the backend URL env var is
+# VITE_API_BASE_URL (default there is http://localhost:8000 for local dev;
+# the build below points it at the real deployed backend URL instead).
+# That file also defines VITE_RECRUITER_EMAIL (audit-trail header, defaults
+# to recruiter@example.com) — not infra-derived, left at its default here.
+#
+# FRONTEND BUILD TOOL: npm — confirmed directly (2026-08-19) via root
+# package.json's own build script (`npm --prefix frontend run build`) and
+# frontend/README.md's documented `npm i`/`npm run dev`. An earlier guess
+# that bun.lock's presence meant the team used bun instead was wrong —
+# corrected after actually checking, see "Install frontend dependencies"
+# step's comment.
+#
+# SCM_DO_BUILD_DURING_DEPLOYMENT=true (Oryx build-on-deploy, so
+# `pip install -r requirements.txt` runs server-side) is now tracked as a
+# real app_settings entry in app_service.tf, not set here via CLI.
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - backend/**
+      - frontend/**
+      - azure-pipelines.yml
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - backend/**
+      - frontend/**
+
+variables:
+  azureServiceConnection: "TeamRocket-Appservices"
+  backendAppName: "app-resumeiq-backend-dev"
+  resourceGroupName: "TeamRocket"
+  # Storage account name has a random suffix (storage.tf) so it can't be
+  # hardcoded — the deploy job below resolves it at runtime by prefix match.
+  storageAccountPrefix: "stresumeiqdev"
+  vmImageName: "ubuntu-latest"
+  # "Sign in with Google" Client ID — not a secret (it's public in the
+  # frontend bundle regardless), but must be the exact same value as
+  # infra/terraform/variables.tf's google_client_id default, since an ID
+  # token is only valid for the audience it was issued for.
+  googleClientId: "704845703885-s983jor0pui2juhfgg1e6d3m2pt4st2u.apps.googleusercontent.com"
+
+stages:
+  # ---------------------------------------------------------------------
+  # BUILD — runs on every PR into main and on every push to main.
+  # Validates both apps build cleanly; produces deployable artifacts.
+  # ---------------------------------------------------------------------
+  - stage: Build
+    jobs:
+      - job: BuildBackend
+        displayName: "Build & Test Backend"
+        pool:
+          vmImage: $(vmImageName)
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.12"
+
+          - script: |
+              cd backend
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+            displayName: "Install backend dependencies"
+
+          - script: |
+              cd backend
+              pytest
+            displayName: "Run backend tests"
+
+          - task: ArchiveFiles@2
+            displayName: "Zip backend for deploy"
+            inputs:
+              rootFolderOrFile: "$(Build.SourcesDirectory)/backend"
+              includeRootFolder: false
+              archiveType: "zip"
+              archiveFile: "$(Build.ArtifactStagingDirectory)/backend.zip"
+
+          - publish: "$(Build.ArtifactStagingDirectory)/backend.zip"
+            artifact: backend-package
+
+      - job: BuildFrontend
+        displayName: "Build Frontend"
+        pool:
+          vmImage: $(vmImageName)
+        steps:
+          # UseNode@1, not NodeTool@0 — that task is deprecated (still works,
+          # but flagged by ADO and won't receive further updates). Note the
+          # input key changes too: `version`, not `versionSpec`.
+          - task: UseNode@1
+            inputs:
+              # 22.x, not 20.x — @tanstack/start-storage-context requires
+              # node >=22.12.0 (npm warns EBADENGINE on 20.x; not fatal on
+              # its own, but bumping this removes one variable).
+              version: "22.x"
+
+          # npm install, not npm ci — confirmed npm (not bun) is the real
+          # tool: root package.json's own build script is
+          # `npm --prefix frontend run build`, and frontend/README.md
+          # documents `npm i`/`npm run dev` directly. bun.lock's presence
+          # was a red herring (an earlier guess based on it existing plus
+          # the devcontainer listing Bun as an installed tool — wrong,
+          # corrected 2026-08-19). `npm ci` failed because
+          # package-lock.json is out of sync with package.json (real gap in
+          # the app repo, not this pipeline); `npm install` tolerates that
+          # instead of hard-failing. Ideally someone regenerates and commits
+          # an up-to-date package-lock.json in the app repo and this goes
+          # back to `npm ci` for full reproducibility — not blocking either
+          # way.
+          - script: |
+              cd frontend
+              npm install
+            displayName: "Install frontend dependencies"
+
+          - script: |
+              cd frontend
+              npm run build
+            displayName: "Build frontend (vite build)"
+            env:
+              # Backend URL is deterministic (no random suffix on the App
+              # Service name) — see outputs.tf's backend_url output.
+              VITE_API_BASE_URL: "https://$(backendAppName).azurewebsites.net"
+              VITE_GOOGLE_CLIENT_ID: $(googleClientId)
+
+          - task: ArchiveFiles@2
+            displayName: "Zip frontend dist for deploy"
+            inputs:
+              rootFolderOrFile: "$(Build.SourcesDirectory)/frontend/dist"
+              includeRootFolder: false
+              archiveType: "zip"
+              archiveFile: "$(Build.ArtifactStagingDirectory)/frontend-dist.zip"
+
+          - publish: "$(Build.ArtifactStagingDirectory)/frontend-dist.zip"
+            artifact: frontend-dist
+
+  # ---------------------------------------------------------------------
+  # DEPLOY — only on main (never on PRs). Gated behind the 'dev' ADO
+  # Environment, so approvals/checks can be configured there if wanted —
+  # same instinct as the GitHub Actions apply workflow's `environment: dev`.
+  # ---------------------------------------------------------------------
+  - stage: Deploy
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployBackend
+        displayName: "Deploy Backend to App Service"
+        pool:
+          vmImage: $(vmImageName)
+        environment: dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureWebApp@1
+                  displayName: "Deploy backend zip"
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: "webAppLinux"
+                    appName: $(backendAppName)
+                    package: "$(Pipeline.Workspace)/backend-package/backend.zip"
+                    startUpCommand: "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+                  # SCM_DO_BUILD_DURING_DEPLOYMENT=true is now set as a
+                  # tracked app_settings entry in app_service.tf, rather
+                  # than force-set here via CLI on every deploy.
+
+      - deployment: DeployFrontend
+        displayName: "Deploy Frontend to Static Website"
+        pool:
+          vmImage: $(vmImageName)
+        environment: dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: ExtractFiles@1
+                  inputs:
+                    archiveFilePatterns: "$(Pipeline.Workspace)/frontend-dist/frontend-dist.zip"
+                    destinationFolder: "$(Pipeline.Workspace)/frontend-dist-extracted"
+
+                - task: AzureCLI@2
+                  name: uploadFrontend
+                  displayName: "Upload frontend build to $web container"
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      set -euo pipefail
+                      STORAGE_ACCOUNT=$(az storage account list \
+                        --resource-group $(resourceGroupName) \
+                        --query "[?starts_with(name, '$(storageAccountPrefix)')].name | [0]" \
+                        -o tsv)
+
+                      if [ -z "$STORAGE_ACCOUNT" ]; then
+                        echo "##vso[task.logissue type=error]No storage account found with prefix $(storageAccountPrefix) in $(resourceGroupName) — has terraform apply run yet?"
+                        exit 1
+                      fi
+
+                      echo "Uploading to storage account: $STORAGE_ACCOUNT"
+                      az storage blob upload-batch \
+                        --account-name "$STORAGE_ACCOUNT" \
+                        --destination '$web' \
+                        --source "$(Pipeline.Workspace)/frontend-dist-extracted" \
+                        --overwrite
+
+                      # Handed to the SmokeTest stage below (stageDependencies
+                      # output var) so it can look up the real static-website
+                      # URL itself, rather than re-doing this same prefix
+                      # lookup a second time or — worse — guessing the
+                      # unpredictable .zN. endpoint suffix (see
+                      # outputs.tf's frontend_static_website_url comment and
+                      # CHANGELOG.md's z13-vs-z5 history for why that's never
+                      # safe to assume).
+                      echo "##vso[task.setvariable variable=STORAGE_ACCOUNT;isOutput=true]$STORAGE_ACCOUNT"
+
+  # ---------------------------------------------------------------------
+  # SMOKE TEST — only on main, only if Deploy succeeded. Automates the
+  # manual checks that caught real issues after the first live deploy
+  # (2026-08-19): backend /health responding as genuinely healthy — not
+  # mock mode — and the frontend actually serving. Fails loudly instead
+  # of a broken deploy sitting there until someone happens to check by
+  # hand.
+  # ---------------------------------------------------------------------
+  - stage: SmokeTest
+    dependsOn: Deploy
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: BackendHealthCheck
+        displayName: "Smoke Test: Backend /health"
+        pool:
+          vmImage: $(vmImageName)
+        steps:
+          - script: |
+              set -euo pipefail
+              URL="https://$(backendAppName).azurewebsites.net/health"
+              echo "Checking $URL"
+
+              # Retry loop, not a single shot — the app can still be mid
+              # warm-up right after a fresh deploy restarts it (real,
+              # observed behaviour: a cold first request took over a
+              # minute; Always On avoids future *idle* cold starts, but
+              # not this one-time post-deploy warm-up cost).
+              ATTEMPTS=6
+              SLEEP_SECONDS=20
+              for i in $(seq 1 $ATTEMPTS); do
+                HTTP_CODE=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$URL" || echo "000")
+                if [ "$HTTP_CODE" == "200" ]; then
+                  break
+                fi
+                echo "Attempt $i/$ATTEMPTS: got HTTP $HTTP_CODE, retrying in ${SLEEP_SECONDS}s..."
+                sleep $SLEEP_SECONDS
+              done
+
+              if [ "$HTTP_CODE" != "200" ]; then
+                echo "##vso[task.logissue type=error]Backend /health never returned 200 after $ATTEMPTS attempts (last: $HTTP_CODE)"
+                exit 1
+              fi
+
+              cat /tmp/health.json
+              HEALTH_STATUS=$(jq -r '.status' /tmp/health.json)
+              MOCK_AZURE=$(jq -r '.mock_azure' /tmp/health.json)
+
+              if [ "$HEALTH_STATUS" != "healthy" ]; then
+                echo "##vso[task.logissue type=error]Backend status is '$HEALTH_STATUS', expected 'healthy'"
+                exit 1
+              fi
+
+              if [ "$MOCK_AZURE" != "false" ]; then
+                echo "##vso[task.logissue type=error]Backend is running with mock_azure=true — real Azure services (Key Vault secrets, OpenAI, Search, etc.) did not connect. Deploy succeeded but the app isn't actually configured correctly."
+                exit 1
+              fi
+
+              echo "Backend smoke test passed: status=healthy, mock_azure=false"
+            displayName: "Curl /health, assert healthy + real Azure config"
+
+      - job: FrontendAvailabilityCheck
+        displayName: "Smoke Test: Frontend static site"
+        dependsOn: [] # no dependency on BackendHealthCheck — run in parallel
+        pool:
+          vmImage: $(vmImageName)
+        variables:
+          # FIXED 2026-08-19: was outputs['uploadFrontend.STORAGE_ACCOUNT'],
+          # which resolved empty on the real run ("Could not resolve static
+          # website URL for storage account " — blank). Confirmed against
+          # Microsoft's own docs: output variables from a *deployment* job
+          # (DeployFrontend is `deployment:`, not `job:`) need the job name
+          # prefixed a second time inside outputs[...] —
+          # dependencies.A.outputs['A.step.var'], not just
+          # dependencies.A.outputs['step.var']. Plain `job:` steps don't
+          # need this; deployment jobs specifically do.
+          storageAccount: $[ stageDependencies.Deploy.DeployFrontend.outputs['DeployFrontend.uploadFrontend.STORAGE_ACCOUNT'] ]
+        steps:
+          - task: AzureCLI@2
+            displayName: "Look up real static website URL, curl it"
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: "bash"
+              scriptLocation: "inlineScript"
+              inlineScript: |
+                set -euo pipefail
+
+                # Read the real endpoint from Azure rather than construct
+                # it — the .zN. subdomain is an Azure-assigned value, not
+                # something derivable from the account name (this exact
+                # mistake — guessing .z13. instead of the real .z5. —
+                # happened early in this project; never repeat it).
+                FRONTEND_URL=$(az storage account show \
+                  --name "$(storageAccount)" \
+                  --resource-group $(resourceGroupName) \
+                  --query "primaryEndpoints.web" -o tsv)
+
+                if [ -z "$FRONTEND_URL" ]; then
+                  echo "##vso[task.logissue type=error]Could not resolve static website URL for storage account $(storageAccount)"
+                  exit 1
+                fi
+
+                echo "Checking $FRONTEND_URL"
+                RESPONSE=$(curl -sS "$FRONTEND_URL")
+                HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "$FRONTEND_URL")
+
+                if [ "$HTTP_CODE" != "200" ]; then
+                  echo "##vso[task.logissue type=error]Frontend returned HTTP $HTTP_CODE, expected 200"
+                  exit 1
+                fi
+
+                # Only checks the static HTML shell, not rendered content —
+                # this is a client-rendered SPA, so anything beyond the
+                # <title>/root div only exists after JS runs in a real
+                # browser. A curl-based check can't see past that; this
+                # confirms the file is served correctly, not that the app
+                # renders correctly.
+                if ! echo "$RESPONSE" | grep -q "<title>ResumeIQ"; then
+                  echo "##vso[task.logissue type=error]Frontend response missing expected <title>ResumeIQ ...> tag — wrong content or broken build?"
+                  exit 1
+                fi
+
+                echo "Frontend smoke test passed: HTTP 200, expected <title> present"

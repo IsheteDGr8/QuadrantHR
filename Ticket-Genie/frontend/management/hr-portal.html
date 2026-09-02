@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HR Operations Portal | TicketGenie Management</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <style>
+    .welcome-section { padding: 24px 0 16px; border-bottom: 1px solid #e1e6e2; margin-bottom: 24px; }
+    .eyebrow { font-size: 0.75rem; color: #6b7280; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+    .welcome-section h2 { font-size: 1.5rem; color: #111827; margin-top: 4px; font-weight: 600; }
+    .welcome-section p { color: #6b7280; font-size: 0.9rem; margin-top: 2px; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .stat-card { background: white; border: 1px solid #e1e6e2; padding: 20px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+    .stat-card h3 { font-size: 0.85rem; color: #6b7280; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+    .stat-number { font-size: 1.8rem; font-weight: bold; color: #111827; }
+    .border-red { border-left: 4px solid #ef4444; }
+    .border-purple { border-left: 4px solid #6f4b82; }
+
+    .ticket-table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; border: 1px solid #e1e6e2; overflow: hidden; }
+    .ticket-table th { background: #fcfbfc; padding: 12px 16px; text-align: left; font-size: 0.75rem; color: #6b7280; text-transform: uppercase; border-bottom: 1px solid #e1e6e2; }
+    .ticket-table td { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; color: #374151; vertical-align: middle; }
+    
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    .badge-high { background: #fee2e2; color: #b91c1c; }
+    .badge-med { background: #fef3c7; color: #b45309; }
+    .badge-low { background: #f3f4f6; color: #475569; }
+    .badge-open { background: #e0e7ff; color: #4338ca; }
+    .badge-progress { background: #fef3c7; color: #92400e; }
+    
+    .btn-sm { background: #2b1b36; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; transition: background 0.2s; }
+    .btn-sm:hover { background: #533760; }
+  </style>
+</head>
+<body class="employee-page management-page">
+
+  <div id="shared-sidebar"></div>
+
+  <main class="main-content">
+    <div id="shared-topnav"></div>
+
+    <section class="welcome-section">
+      <div class="eyebrow">HUMAN RESOURCES</div>
+      <h2>HR Management Dashboard</h2>
+      <p>Overview of human resources tickets, payroll inquiries, and employee relations.</p>
+    </section>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <h3>Open HR Tickets</h3>
+        <span class="stat-number" id="hrOpen">0</span>
+      </div>
+      <div class="stat-card border-red">
+        <h3>High Priority</h3>
+        <span class="stat-number" id="hrHigh">0</span>
+      </div>
+      <div class="stat-card border-purple">
+        <h3>Resolved</h3>
+        <span class="stat-number" id="hrResolved">0</span>
+      </div>
+      <div class="stat-card border-purple">
+        <h3>Total HR Requests</h3>
+        <span class="stat-number" id="hrTotal">0</span>
+      </div>
+    </div>
+
+    <section class="section">
+      <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div><h3>Recent HR Tickets</h3><p style="font-size: 0.85rem; color: #6b7280;">Latest tickets assigned to HR team</p></div>
+      </div>
+      <table class="ticket-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Category</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="hrTableBody">
+          <tr><td colspan="6" style="text-align:center;">Loading HR tickets...</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/azure-auth.js"></script>
+  <script src="../js/theme.js"></script>
+  <script src="../js/script.js"></script>
+  <script src="components.js"></script>
+  <script src="management.js"></script>
+  <script>
+  document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      const tickets = await apiFetchTickets({ adminView: true });
+      const hrTickets = tickets.filter(t => 
+        (t.category || "").toLowerCase().includes("hr") ||
+        (t.category || "").toLowerCase().includes("payroll") ||
+        (t.category || "").toLowerCase().includes("benefit") ||
+        (t.category || "").toLowerCase().includes("time off") ||
+        (t.department || "").toLowerCase().includes("hr")
+      );
+      
+      const open = hrTickets.filter(t => (t.status || "").toLowerCase() === "open").length;
+      const high = hrTickets.filter(t => (t.priority || "").toLowerCase() === "high").length;
+      const resolved = hrTickets.filter(t => (t.status || "").toLowerCase() === "resolved").length;
+
+      document.getElementById("hrOpen").textContent = open;
+      document.getElementById("hrHigh").textContent = high;
+      document.getElementById("hrResolved").textContent = resolved;
+      document.getElementById("hrTotal").textContent = hrTickets.length;
+
+      const tbody = document.getElementById("hrTableBody");
+      const displayList = hrTickets;
+      if (!displayList || displayList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No HR tickets found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = displayList.slice(0, 7).map(t => `
+        <tr>
+          <td><strong>#${t.id}</strong></td>
+          <td>${escapeHTML(t.title)}</td>
+          <td>${escapeHTML(t.category)}</td>
+          <td><span class="badge ${ (t.priority||'').toLowerCase() === 'high' ? 'badge-high' : 'badge-med' }">${t.priority || 'Medium'}</span></td>
+          <td><span class="badge badge-open">${t.status}</span></td>
+          <td>
+            <a href="inbox.html" class="btn-sm" style="text-decoration: none;">View Queue</a>
+          </td>
+        </tr>
+      `).join("");
+    } catch (err) {
+      console.error("Failed to load HR portal tickets:", err);
+    }
+  });
+  </script>
+</body>
+</html>
+

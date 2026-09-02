@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TicketGenie - Team Inbox</title>
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { display: flex; height: 100vh; background-color: #f4f5f8; color: #1f2937; margin: 0; overflow: hidden; }
+
+    /* COLLAPSIBLE SIDEBAR */
+    .sidebar { width: 260px; background-color: #2b1b38; color: #d1d5db; display: flex; flex-direction: column; flex-shrink: 0; justify-content: space-between; z-index: 10; transition: width 0.3s ease; white-space: nowrap; overflow-x: hidden; }
+    .sidebar.collapsed { width: 80px; }
+    .sidebar-top { flex: 1; }
+    .sidebar-header { padding: 24px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .bot-icon { background: rgba(255,255,255,0.1); color: #facc15; padding: 8px; border-radius: 8px; font-size: 1.4rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .sidebar-brand-text h2 { color: #ffffff; font-size: 1.1rem; font-weight: 600; margin-bottom: 2px; }
+    .sidebar-brand-text span { display: block; font-size: 0.65rem; color: #a5b4fc; text-transform: uppercase; letter-spacing: 1px; }
+    
+    .nav-section { margin-top: 24px; }
+    .nav-title { font-size: 0.65rem; color: #818cf8; text-transform: uppercase; font-weight: 700; margin: 0 16px 8px; letter-spacing: 1px; transition: opacity 0.2s; }
+    .nav-link { display: flex; align-items: center; gap: 12px; padding: 10px 16px; margin: 0 8px 4px; color: #d1d5db; text-decoration: none; font-size: 0.85rem; border-radius: 8px; transition: 0.2s; }
+    .nav-link:hover { background-color: rgba(255,255,255,0.05); color: #ffffff; }
+    .nav-link.active { background-color: rgba(255,255,255,0.12); color: #ffffff; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); }
+    .menu-icon { font-size: 1.25rem; flex-shrink: 0; display: flex; justify-content: center; width: 24px; transition: 0.2s; }
+    .nav-link.active .menu-icon { color: #a5b4fc; }
+    
+    .sidebar-footer { padding: 24px; font-size: 0.75rem; color: #a5b4fc; border-top: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 8px; }
+    .status-dot { width: 8px; height: 8px; background-color: #10b981; border-radius: 50%; flex-shrink: 0; }
+
+    .sidebar.collapsed .sidebar-brand-text, .sidebar.collapsed .nav-title, .sidebar.collapsed .menu-text, .sidebar.collapsed .sidebar-footer-text { display: none; }
+    .sidebar.collapsed .sidebar-header { justify-content: center; padding: 24px 0; }
+    .sidebar.collapsed .nav-link { justify-content: center; padding: 14px 0; margin: 0 8px 8px; }
+    .sidebar.collapsed .nav-link span:not(.menu-icon) { display: none; }
+    .sidebar.collapsed .sidebar-footer { justify-content: center; padding: 24px 0; }
+
+    /* MAIN CONTENT & TOP NAV */
+    .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+    .top-nav { display: flex; justify-content: space-between; align-items: center; padding: 16px 32px; background: #ffffff; border-bottom: 1px solid #e5e7eb; z-index: 5; }
+    .nav-left-cluster { display: flex; align-items: center; gap: 16px; }
+    .btn-hamburger { background: white; border: 1px solid #e5e7eb; border-radius: 8px; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: #6b7280; transition: 0.2s; }
+    .btn-hamburger:hover { background: #f3f4f6; color: #111827; box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.15); border-color: #d1d5db; }
+    .nav-actions { display: flex; align-items: center; gap: 16px; }
+    .nav-icon-btn { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: #6b7280; transition: 0.2s; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 50%; }
+    .nav-icon-btn:hover { color: #f59e0b; background: #fffbeb; }
+    .user-profile { display: flex; align-items: center; gap: 12px; font-size: 0.85rem; padding-left: 16px; border-left: 1px solid #e5e7eb; }
+    .avatar { width: 32px; height: 32px; background: #eef2ff; color: #4f46e5; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 0.75rem; font-weight: bold; }
+
+    /* INBOX LAYOUT */
+    .inbox-container { display: flex; flex: 1; overflow: hidden; background: #f4f5f8; }
+    .ticket-list-pane { width: 380px; min-width: 280px; max-width: 600px; background: #ffffff; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; z-index: 2; flex-shrink: 0; }
+    .resizer { width: 6px; background: transparent; cursor: col-resize; transition: background 0.2s; flex-shrink: 0; z-index: 10; position: relative; margin-left: -3px; margin-right: -3px; }
+    .resizer:hover, .resizer.dragging { background: #a5b4fc; }
+    .pane-header { padding: 24px; border-bottom: 1px solid #e5e7eb; }
+    .pane-header h2 { font-size: 1.2rem; margin-bottom: 16px; color: #111827; font-weight: 600; }
+    .filter-tabs { display: flex; gap: 8px; margin-bottom: 8px; }
+    .filter-tab { padding: 8px 12px; font-size: 0.8rem; font-weight: 600; border-radius: 6px; cursor: pointer; border: 1px solid transparent; transition: 0.2s; }
+    .filter-tab.active { background: #eef2ff; color: #4f46e5; border-color: #c7d2fe; box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1); }
+    .filter-tab.inactive { color: #6b7280; }
+    .filter-tab.inactive:hover { background: #f3f4f6; }
+    .ticket-list { flex: 1; overflow-y: auto; }
+    .ticket-item { padding: 20px 24px; border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background 0.2s; }
+    .ticket-item:hover { background: #f9fafb; }
+    .ticket-item.active { background: #f4f5f8; border-left: 4px solid #4f46e5; padding-left: 20px; }
+    .ticket-meta { display: flex; justify-content: space-between; font-size: 0.75rem; color: #6b7280; margin-bottom: 8px; font-weight: 500; }
+    .ticket-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 8px; color: #111827; line-height: 1.4; }
+    .tag { display: inline-block; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 600; margin-right: 4px; margin-bottom: 4px; }
+    .tag-priority-high { background: #fee2e2; color: #b91c1c; }
+    .tag-priority-med { background: #fef08a; color: #854d0e; }
+    .tag-dept { background: #e0f2fe; color: #0284c7; }
+
+    /* TICKET DETAILS */
+    .ticket-detail-pane { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 32px 40px; }
+    .detail-header { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .detail-top-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    .detail-top-row h1 { font-size: 1.4rem; color: #111827; font-weight: 600; margin: 0; }
+    .ticket-info-bar { display: flex; flex-wrap: wrap; gap: 24px; font-size: 0.85rem; color: #4b5563; padding-top: 16px; border-top: 1px solid #f3f4f6; }
+    .info-item span { color: #9ca3af; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px; }
+    .info-item strong { color: #111827; font-weight: 600; }
+    .detail-body { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+    
+    .thread-column { display: flex; flex-direction: column; gap: 20px; }
+    .message-card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .msg-header { display: flex; justify-content: space-between; margin-bottom: 16px; align-items: center; border-bottom: 1px solid #f3f4f6; padding-bottom: 12px; }
+    .msg-author { display: flex; align-items: center; gap: 12px; font-weight: 600; color: #111827; font-size: 0.95rem; }
+    .msg-author-avatar { width: 32px; height: 32px; background: #eef2ff; color: #4f46e5; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 0.8rem; }
+    .msg-time { font-size: 0.75rem; color: #6b7280; }
+    .msg-content { font-size: 0.9rem; color: #374151; line-height: 1.6; }
+    .message-card.private-note { background: #fffbeb; border-color: #fde047; }
+    .message-card.private-note .msg-author-avatar { background: #fef08a; color: #854d0e; }
+    .msg-system { background: #f8fafc; border: 1px dashed #cbd5e1; padding: 12px 20px; border-radius: 8px; font-size: 0.8rem; color: #475569; display: flex; align-items: center; gap: 12px; justify-content: center; font-style: italic; }
+
+    .reply-box { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .reply-textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 8px; min-height: 100px; padding: 12px; font-size: 0.9rem; outline: none; margin-bottom: 16px; font-family: inherit; resize: vertical; transition: 0.2s; }
+    .reply-textarea:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+    .reply-actions { display: flex; justify-content: space-between; align-items: center; }
+
+    button { transition: all 0.2s ease; cursor: pointer; position: relative; }
+    .btn-send { background: #2b1b38; color: white; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 600; }
+    .btn-send:hover { background: #4f46e5; box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.2); }
+    .btn-secondary { background: white; color: #374151; border: 1px solid #d1d5db; padding: 10px 16px; border-radius: 6px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .btn-secondary:hover { background: #f3f4f6; border-color: #9ca3af; box-shadow: 0 0 0 4px rgba(107, 114, 128, 0.15); }
+    .btn-panel { width: 100%; text-align: left; padding: 10px 16px; background: white; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; font-weight: 500; color: #374151; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .btn-panel:hover { background: #f9fafb; border-color: #9ca3af; box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.15); }
+    .btn-panel.resolve-btn { background: #eef2ff; color: #4f46e5; font-weight: 600; border-color: #c7d2fe; }
+    .btn-panel.resolve-btn:hover { background: #e0e7ff; box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.2); }
+    .btn-panel.escalate-btn { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+    .btn-panel.escalate-btn:hover { background: #fee2e2; box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.2); }
+
+    .insight-column { display: flex; flex-direction: column; gap: 24px; }
+    .ai-card { background: linear-gradient(to bottom, #ffffff, #fcfcff); border: 1px solid #c7d2fe; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.05); }
+    .ai-header { display: flex; align-items: center; gap: 8px; font-weight: 700; color: #371b58; font-size: 0.95rem; margin-bottom: 16px; border-bottom: 1px solid #e0e7ff; padding-bottom: 12px; }
+    .ai-field { margin-bottom: 16px; }
+    .ai-field-label { font-size: 0.75rem; color: #6b7280; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; display: block; }
+    .ai-field-text { font-size: 0.85rem; color: #374151; line-height: 1.5; }
+    .sentiment-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    
+    .action-panel { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 4px; }
+    .action-panel-title { font-size: 0.8rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+
+    .empty-state { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #6b7280; padding: 40px; text-align: center; }
+    
+    /* Genie Chatbot Styles */
+    .genie-container { position: fixed; bottom: 28px; right: 28px; z-index: 1000; }
+    .genie-button { height: 45px; padding: 0 17px; border: none; border-radius: 23px; background: #2b1b38; color: white; display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15); cursor: pointer; transition: 0.2s; }
+    .genie-button:hover { background: #4f46e5; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(79,70,229,0.3); }
+    .genie-button i { font-size: 1.1rem; color: #facc15; }
+    .genie-chat { position: fixed; right: 28px; bottom: 85px; width: 355px; height: 505px; background: white; border: 1px solid #dfe5e1; border-radius: 12px; box-shadow: 0 18px 45px rgba(43,27,54,0.18); display: none; flex-direction: column; overflow: hidden; z-index: 999; }
+    .genie-chat.open { display: flex; animation: genieOpen 0.2s ease-out; }
+    @keyframes genieOpen { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .genie-chat-header { height: 68px; padding: 0 16px; background: #2b1b38; color: white; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .genie-header-info { display: flex; align-items: center; gap: 10px; }
+    .genie-avatar { width: 34px; height: 34px; border-radius: 8px; background: #6f4b82; display: flex; align-items: center; justify-content: center; color: white; }
+    .genie-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; }
+    .genie-close { width: 30px; height: 30px; border: none; background: transparent; color: #a0aaa4; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    .genie-close:hover { color: white; background: rgba(255,255,255,0.1); }
+    .genie-messages { flex: 1; overflow-y: auto; padding: 18px 15px; background: #fafcfb; }
+    .genie-message { display: flex; gap: 8px; margin-bottom: 15px; }
+    .genie-message-avatar { width: 26px; height: 26px; border-radius: 7px; background: #f1ebf4; color: #6f4b82; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10px; }
+    .genie-bubble { max-width: 255px; background: white; border: 1px solid #e1e6e2; border-radius: 5px 10px 10px 10px; padding: 10px 12px; color: #5f6b63; font-size: 0.85rem; line-height: 1.55; }
+    .genie-message-user { justify-content: flex-end; }
+    .genie-message-user .genie-bubble { background: #6f4b82; color: white; border-color: #6f4b82; border-radius: 10px 5px 10px 10px; }
+    .genie-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: 34px; margin-bottom: 12px; }
+    .genie-suggestion { border: 1px solid #d2c6d6; background: white; color: #6f4b82; border-radius: 15px; padding: 6px 10px; font-size: 0.8rem; cursor: pointer; transition: 0.2s; }
+    .genie-suggestion:hover { background: #f1ebf4; }
+    .genie-input-area { min-height: 58px; padding: 10px; border-top: 1px solid #e5eae6; background: white; display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+    .genie-input-area input { flex: 1; height: 37px; border: 1px solid #dfe5e1; border-radius: 7px; padding: 0 11px; outline: none; font-size: 0.85rem; }
+    .genie-input-area input:focus { border-color: #6f4b82; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+    .genie-input-area button { width: 37px; height: 37px; flex-shrink: 0; border: none; border-radius: 7px; background: #6f4b82; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+    .genie-input-area button:hover { background: #533760; }
+    .genie-disclaimer { padding: 0 12px 9px; background: white; color: #a0a8a3; text-align: center; font-size: 0.7rem; }
+  </style>
+</head>
+<body class="admin-page">
+
+  <aside class="sidebar" id="appSidebar">
+    <div class="sidebar-top">
+      <div class="sidebar-header">
+        <div class="bot-icon"><i class="ph-fill ph-ticket"></i></div>
+        <div class="sidebar-brand-text"><h2>TicketGenie</h2><span id="sidebarRole">Unified Portal</span></div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-title">Workspace</div>
+        <a href="admin_dashboard.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-chart-pie-slice"></i></span><span class="menu-text">My Dashboard</span></a>
+        <a href="announcements.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-megaphone"></i></span><span class="menu-text">Announcements</span></a>
+        <a href="analytics.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-trend-up"></i></span><span class="menu-text">Analytics</span></a>
+        <a href="calendar.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-calendar-blank"></i></span><span class="menu-text">Calendar</span></a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-title">Ticketing System</div>
+        <a href="submit-ticket.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-plus-circle"></i></span><span class="menu-text">Submit Request</span></a>
+        <a href="inbox.html" class="nav-link active"><span class="menu-icon"><i class="ph-duotone ph-tray"></i></span><span class="menu-text">Team Inbox</span></a>
+      </div>
+
+      <div class="nav-section" id="adminNav" style="display: block;">
+        <div class="nav-title">Administration</div>
+        <a href="policy_library.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-books"></i></span><span class="menu-text">Policy Library</span></a>
+        <a href="ticket_archive.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-archive"></i></span><span class="menu-text">Ticket Archive</span></a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-title">Account</div>
+        <a href="settings.html" class="nav-link"><span class="menu-icon"><i class="ph-duotone ph-gear"></i></span><span class="menu-text">Settings</span></a>
+      </div>
+    </div>
+    
+    <div class="sidebar-footer">
+      <div class="status-dot"></div>
+      <div class="sidebar-footer-text"><div style="color: white; font-weight: 600;">Systems operational</div></div>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="top-nav">
+      <div class="nav-left-cluster">
+        <button class="btn-hamburger" onclick="toggleSidebar()"><i class="ph ph-list"></i></button>
+        <div style="font-size: 0.85rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Team Inbox</div>
+      </div>
+      <div class="nav-actions">
+        <button class="nav-icon-btn" id="darkModeToggle" type="button" aria-label="Toggle Dark Mode"><i class="ph-fill ph-moon" id="darkModeIcon"></i></button>
+        <button class="nav-icon-btn"><i class="ph-fill ph-bell"></i></button>
+        <div class="user-profile">
+          <div style="text-align: right;"><div id="navName" style="color: #111827;">User</div><div id="navSubRole" style="font-size: 0.7rem; color: #6b7280;">Role</div></div>
+          <div class="avatar" id="navAvatar">U</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="inbox-container">
+      <div class="ticket-list-pane" id="queuePane">
+        <div class="pane-header">
+          <h2>My Queue</h2>
+          <div class="filter-tabs" id="filterTabs">
+            <div class="filter-tab active" onclick="switchTab('Open')">Open</div>
+            <div class="filter-tab inactive" onclick="switchTab('Pending')">Pending</div>
+            <div class="filter-tab inactive" onclick="switchTab('Resolved')">Resolved</div>
+          </div>
+        </div>
+        <div class="ticket-list" id="ticketListContainer"></div>
+      </div>
+
+      <div class="resizer" id="dragResizer"></div>
+      
+      <div class="ticket-detail-pane" id="ticketDetailContainer"></div>
+    </div>
+
+    <div class="genie-container">
+      <button class="genie-button" id="genieButton" type="button"><i class="ph-fill ph-magic-wand"></i> Ask Genie</button>
+      <div class="genie-chat" id="genieChat">
+        <div class="genie-chat-header">
+          <div class="genie-header-info">
+            <div class="genie-avatar"><i class="ph-fill ph-magic-wand"></i></div>
+            <div><strong>Genie AI</strong><span><span class="genie-status-dot"></span> Online</span></div>
+          </div>
+          <button class="genie-close" id="closeGenieButton" type="button"><i class="ph ph-x"></i></button>
+        </div>
+        <div class="genie-messages" id="genieMessages">
+          <div class="genie-message">
+            <div class="genie-message-avatar"><i class="ph-fill ph-magic-wand"></i></div>
+            <div class="genie-bubble">Hi! I'm Genie. I can help you triage inbox tickets, summarize issues, or guide the team.</div>
+          </div>
+          <div class="genie-suggestions">
+            <button class="genie-suggestion" type="button">Review tickets</button>
+            <button class="genie-suggestion" type="button">Prioritize queue</button>
+            <button class="genie-suggestion" type="button">Get help</button>
+          </div>
+        </div>
+        <div class="genie-input-area">
+          <input type="text" id="genieInput" placeholder="Ask Genie something..." autocomplete="off">
+          <button type="button" id="genieSendButton"><i class="ph-fill ph-arrow-up"></i></button>
+        </div>
+        <div class="genie-disclaimer">Genie may occasionally provide inaccurate information.</div>
+      </div>
+    </div>
+  </main>
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/api.js?v=20260818_4"></script>
+  <script src="../js/azure-auth.js?v=20260818_2"></script>
+  <script src="../js/theme.js"></script>
+  <script src="../js/script.js"></script>
+  <script>
+    function toggleSidebar() { document.getElementById('appSidebar').classList.toggle('collapsed'); }
+    
+    let loggedInUser = "Admin";
+    const userDataString = sessionStorage.getItem('portalUser') || localStorage.getItem('portalUser');
+    if (userDataString) {
+      const user = JSON.parse(userDataString);
+      loggedInUser = user.name || 'Admin';
+      const roleStr = user.role || 'Admin';
+      if (document.getElementById('sidebarRole')) document.getElementById('sidebarRole').innerText = `${roleStr} Portal`;
+      if (document.getElementById('navName')) document.getElementById('navName').innerText = loggedInUser;
+      if (document.getElementById('navSubRole')) document.getElementById('navSubRole').innerText = `${roleStr} Admin`;
+      if (document.getElementById('navAvatar')) document.getElementById('navAvatar').innerText = loggedInUser.charAt(0).toUpperCase();
+      const adminNav = document.getElementById('adminNav');
+      if (adminNav && (roleStr === 'HR' || roleStr === 'Management' || roleStr === 'Admin')) {
+        adminNav.style.display = 'block';
+      }
+    } else { 
+      console.warn("[Inbox Auth] No portalUser session found in sessionStorage or localStorage. Redirecting to index.html");
+      window.location.href = '../index.html'; 
+    }
+
+    // Resizer logic
+    const resizer = document.getElementById('dragResizer');
+    const leftPane = document.getElementById('queuePane');
+    let x = 0; let w = 0;
+    const mouseDownHandler = function(e) {
+        x = e.clientX;
+        const styles = window.getComputedStyle(leftPane);
+        w = parseInt(styles.width, 10);
+        document.addEventListener('mousemove', mouseMoveHandler);
+        document.addEventListener('mouseup', mouseUpHandler);
+        resizer.classList.add('dragging');
+    };
+    const mouseMoveHandler = function(e) {
+        const dx = e.clientX - x;
+        leftPane.style.width = `${w + dx}px`;
+    };
+    const mouseUpHandler = function() {
+        document.removeEventListener('mousemove', mouseMoveHandler);
+        document.removeEventListener('mouseup', mouseUpHandler);
+        resizer.classList.remove('dragging');
+    };
+    if (resizer) resizer.addEventListener('mousedown', mouseDownHandler);
+    initializeGenie();
+
+    let tickets = [];
+    let currentTab = "Open";
+    let selectedTicketId = null;
+
+    async function loadInboxTickets() {
+      try {
+        const listContainer = document.getElementById('ticketListContainer');
+        if (listContainer) {
+          listContainer.innerHTML = `<div style="padding: 24px; text-align: center; color: #6b7280;">Loading live tickets from server...</div>`;
+        }
+        
+        const fetchFn = window.apiFetchTickets || (async () => []);
+        const rawTickets = await fetchFn({ adminView: true });
+
+        if (!rawTickets || !Array.isArray(rawTickets)) {
+          throw new Error("Failed to load tickets payload from API endpoint.");
+        }
+
+        const getCommentsFn = window.apiGetComments;
+        const commentSets = await Promise.all(rawTickets.map(async t => {
+          if (typeof getCommentsFn !== "function") return [];
+          try {
+            return await getCommentsFn(t.id);
+          } catch (err) {
+            console.error(`Failed to load comments for ${t.id}:`, err);
+            return [];
+          }
+        }));
+
+        tickets = rawTickets.map((t, index) => ({
+          id: t.id,
+          status: t.status || "Open",
+          subject: t.title || t.subject || "Untitled Ticket",
+          dept: t.department || t.category || "General",
+          priority: t.priority || "Medium",
+          priorityClass: `tag-priority-${(t.priority || 'med').toLowerCase().substring(0, 3)}`,
+          requester: t.requester_name || t.requester_id || "Employee",
+          time: t.created_at ? new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Today",
+          created: t.created_at ? new Date(t.created_at).toLocaleString() : "Today",
+          aiSummary: t.ai_summary || t.description || "No AI summary generated yet.",
+          aiAction: t.ai_action || "Review request details and route to appropriate department.",
+          sentiment: t.sentiment || "😐 Neutral",
+          sentimentBg: "#f3f4f6", sentimentBorder: "#e5e7eb", sentimentColor: "#374151",
+          thread: commentSets[index].length ? commentSets[index].map(c => ({
+            type: c.sender_role === 'Private' ? 'private' : (c.sender_role === 'System' ? 'system' : 'user'),
+            author: c.sender_role || 'User',
+            avatar: (c.sender_role || 'U').charAt(0).toUpperCase(),
+            time: c.createdAt ? new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+            content: c.message || c.content || ''
+          })) : [{
+            type: 'user',
+            author: t.requester_name || 'Requester',
+            avatar: (t.requester_name || 'R').charAt(0).toUpperCase(),
+            time: t.created_at ? new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Created',
+            content: t.description || t.title || ''
+          }]
+        }));
+
+        renderTicketList();
+      } catch (err) {
+        console.error("loadInboxTickets error:", err);
+        const listContainer = document.getElementById('ticketListContainer');
+        if (listContainer) {
+          listContainer.innerHTML = `<div style="padding: 24px; text-align: center; color: #dc2626; font-weight: 600;">⚠️ Error fetching tickets: ${escapeHTML(err.message)}</div>`;
+        }
+        const detailContainer = document.getElementById('ticketDetailContainer');
+        if (detailContainer) {
+          detailContainer.innerHTML = `<div class="empty-state" style="color: #dc2626;"><i class="ph-duotone ph-warning-circle" style="font-size: 3rem; margin-bottom: 16px;"></i><h2>API Connection Error</h2><p style="color: #dc2626;">Could not connect to backend server endpoint.</p></div>`;
+        }
+      }
+    }
+
+    function switchTab(tabName) {
+      currentTab = tabName;
+      const tabs = document.getElementById('filterTabs').children;
+      for(let t of tabs) {
+        if(t.innerText.includes(tabName)) t.className = "filter-tab active";
+        else t.className = "filter-tab inactive";
+      }
+      renderTicketList();
+    }
+
+    function renderTicketList() {
+      const listContainer = document.getElementById('ticketListContainer');
+      listContainer.innerHTML = "";
+      const filteredTickets = tickets.filter(t => t.status.toLowerCase() === currentTab.toLowerCase());
+      
+      if (filteredTickets.length === 0) {
+        listContainer.innerHTML = `<div style="padding: 24px; text-align: center; color: #9ca3af; font-size: 0.85rem;">No ${currentTab.toLowerCase()} tickets found.</div>`;
+        document.getElementById('ticketDetailContainer').innerHTML = `<div class="empty-state"><i class="ph-duotone ph-envelope-open" style="font-size: 3rem; margin-bottom: 16px; opacity: 0.5;"></i><h2>No Ticket Selected</h2></div>`;
+        return;
+      }
+      if (!selectedTicketId || !filteredTickets.find(t => t.id === selectedTicketId)) {
+        selectedTicketId = filteredTickets[0].id;
+      }
+
+      filteredTickets.forEach(ticket => {
+        const isActive = ticket.id === selectedTicketId ? "active" : "";
+        listContainer.innerHTML += `
+          <div class="ticket-item ${isActive}" onclick="selectTicket('${ticket.id}')">
+            <div class="ticket-meta"><span>${escapeHTML(ticket.id)} • ${escapeHTML(ticket.dept)}</span> <span>${escapeHTML(ticket.time)}</span></div>
+            <div class="ticket-title">${escapeHTML(ticket.subject)}</div>
+            <div><span class="tag ${ticket.priorityClass}">${escapeHTML(ticket.priority)}</span></div>
+          </div>
+        `;
+      });
+      renderTicketDetail();
+    }
+
+    function selectTicket(id) {
+      selectedTicketId = id;
+      renderTicketList();
+    }
+
+    function renderTicketDetail() {
+      const ticket = tickets.find(t => t.id === selectedTicketId);
+      if (!ticket) return;
+
+      const detailContainer = document.getElementById('ticketDetailContainer');
+      let threadHTML = "";
+      ticket.thread.forEach(msg => {
+        if (msg.type === 'system') {
+          threadHTML += `<div class="msg-system"><i class="ph-bold ph-arrow-right"></i> ${escapeHTML(msg.content)}</div>`;
+        } else if (msg.type === 'private') {
+          threadHTML += `<div class="message-card private-note"><div class="msg-header" style="border-bottom-color: #fef08a;"><div class="msg-author"><div class="msg-author-avatar"><i class="ph-fill ph-lock-key"></i></div> ${escapeHTML(msg.author)}</div><div class="msg-time">${escapeHTML(msg.time)}</div></div><div class="msg-content">${escapeHTML(msg.content)}</div></div>`;
+        } else {
+          threadHTML += `<div class="message-card"><div class="msg-header"><div class="msg-author"><div class="msg-author-avatar">${escapeHTML(msg.avatar)}</div> ${escapeHTML(msg.author)}</div><div class="msg-time">${escapeHTML(msg.time)}</div></div><div class="msg-content">${escapeHTML(msg.content).replace(/\n/g, '<br>')}</div></div>`;
+        }
+      });
+
+      let replyBoxHTML = ticket.status.toLowerCase() !== 'resolved' ? `
+          <div class="reply-box">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">
+              <div class="reply-label" style="font-size: 0.85rem; font-weight: 600; color: #111827;">Add response:</div>
+              <button type="button" class="btn-secondary" onclick="suggestReply(this)" style="padding:7px 11px;color:#5b21b6;border-color:#ddd6fe;background:#f5f3ff;">
+                <i class="ph-fill ph-sparkle"></i> Suggest reply
+              </button>
+            </div>
+            <textarea id="replyText" class="reply-textarea" placeholder="Type your message..."></textarea>
+            <div id="replySuggestionMeta" style="display:none;margin-top:9px;padding:9px 11px;border-radius:7px;background:#f5f3ff;color:#5b21b6;font-size:0.75rem;line-height:1.45;"></div>
+            <div class="reply-actions">
+              <button class="btn-secondary" onclick="addNote(this)"><i class="ph-fill ph-lock-key"></i> Private Note</button>
+              <button class="btn-send" onclick="sendReply(this)">Send Reply</button>
+            </div>
+          </div>
+        ` : '';
+
+      detailContainer.innerHTML = `
+        <div class="detail-header">
+          <div class="detail-top-row">
+            <h1>Ticket ${escapeHTML(ticket.id)}: ${escapeHTML(ticket.subject)}</h1>
+            <span class="tag ${ticket.priorityClass}" style="font-size: 0.8rem; padding: 6px 12px;">${escapeHTML(ticket.priority)} Priority</span>
+          </div>
+          <div class="ticket-info-bar">
+            <div class="info-item"><span>Requester</span><strong>${escapeHTML(ticket.requester)}</strong></div>
+            <div class="info-item"><span>Department</span><strong>${escapeHTML(ticket.dept)}</strong></div>
+            <div class="info-item"><span>Created</span><strong>${escapeHTML(ticket.created)}</strong></div>
+            <div class="info-item"><span>Status</span><strong>${escapeHTML(ticket.status)}</strong></div>
+          </div>
+        </div>
+        <div class="detail-body">
+          <div class="thread-column">${threadHTML}${replyBoxHTML}</div>
+          <div class="insight-column">
+            <div class="ai-card">
+              <div class="ai-header"><i class="ph-fill ph-magic-wand" style="font-size:1.2rem; color:#818cf8;"></i> Genie AI Analysis</div>
+              <div class="ai-field"><span class="ai-field-label">Issue Summary</span><div class="ai-field-text">${escapeHTML(ticket.aiSummary)}</div></div>
+              <div class="ai-field"><span class="ai-field-label">Suggested Action</span><div class="ai-field-text">${escapeHTML(ticket.aiAction)}</div></div>
+              <div class="ai-field"><span class="ai-field-label">Sentiment</span><div class="sentiment-badge" style="background:${ticket.sentimentBg}; border-color:${ticket.sentimentBorder}; color:${ticket.sentimentColor};">${escapeHTML(ticket.sentiment)}</div></div>
+            </div>
+            ${ticket.status.toLowerCase() !== 'resolved' ? `
+            <div class="action-panel">
+              <div class="action-panel-title">Ticket Actions</div>
+              <button class="btn-panel" onclick="simulateAction('Reassign to IT', this)">Route to IT Dept <i class="ph-bold ph-caret-right"></i></button>
+              <button class="btn-panel escalate-btn" onclick="simulateAction('Escalate to Manager', this)">Escalate to Management <i class="ph-bold ph-caret-right"></i></button>
+              <button class="btn-panel resolve-btn" onclick="simulateAction('Resolve Ticket', this)"><i class="ph-bold ph-check"></i> Mark as Resolved</button>
+            </div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    async function simulateAction(actionName, btn) {
+      const ticket = tickets.find(t => t.id === selectedTicketId);
+      if (!ticket) return;
+      
+      const newStatus = actionName === 'Resolve Ticket' ? 'Resolved' : ticket.status;
+      const updateFn = window.apiUpdateTicket || (async () => null);
+      const res = await updateFn(selectedTicketId, { status: newStatus });
+      
+      if (!res && newStatus === 'Resolved') {
+        alert("Failed to update ticket status on database server!");
+        return;
+      }
+      
+      ticket.status = newStatus;
+      ticket.thread.push({ type: 'system', content: `[Audit Trail] ${loggedInUser} performed action: ${actionName}.` });
+      renderTicketList();
+    }
+
+    async function addNote(btn) {
+      const text = document.getElementById('replyText').value.trim();
+      if(!text) return;
+      const postFn = window.apiPostComment || (async () => null);
+      let res;
+      try {
+        res = await postFn(selectedTicketId, text, "Private");
+      } catch (err) {
+        alert("Failed to post private note to database server!");
+        return;
+      }
+      const ticket = tickets.find(t => t.id === selectedTicketId);
+      if (ticket) {
+        ticket.thread.push({ type: 'private', author: `Private Note • ${loggedInUser}`, time: 'Just now', content: text });
+      }
+      renderTicketDetail();
+    }
+
+    async function suggestReply(btn) {
+      const textarea = document.getElementById('replyText');
+      const meta = document.getElementById('replySuggestionMeta');
+      if (!textarea || !selectedTicketId) return;
+      if (textarea.value.trim() && !window.confirm('Replace your current draft with an AI suggestion?')) return;
+
+      const original = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="ph ph-spinner-gap"></i> Drafting...';
+      try {
+        const suggestFn = window.apiSuggestTicketResponse;
+        if (typeof suggestFn !== 'function') throw new Error('Suggestion service is unavailable.');
+        const suggestion = await suggestFn(selectedTicketId);
+        textarea.value = suggestion.message || '';
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+        if (meta) {
+          const actions = Array.isArray(suggestion.suggested_actions) ? suggestion.suggested_actions : [];
+          meta.innerHTML = `<strong><i class="ph-fill ph-sparkle"></i> AI-generated draft — review before sending.</strong>${actions.length ? `<div style="margin-top:5px;">Suggested next steps: ${actions.map(escapeHTML).join(' • ')}</div>` : ''}${suggestion.safety_notice_required ? '<div style="margin-top:5px;color:#9f1239;"><strong>Sensitive case:</strong> verify wording and escalation requirements.</div>' : ''}`;
+          meta.style.display = 'block';
+        }
+      } catch (err) {
+        console.error('suggestReply failed:', err);
+        alert(err.message || 'Unable to generate a suggested response.');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
+    }
+
+    async function sendReply(btn) {
+      const text = document.getElementById('replyText').value.trim();
+      if(!text) return;
+      const postFn = window.apiPostComment || (async () => null);
+      let res;
+      try {
+        // Normal reply attribution is derived from the verified backend
+        // identity; the browser does not claim an HR role or display name.
+        res = await postFn(selectedTicketId, text);
+      } catch (err) {
+        alert("Failed to post reply to database server!");
+        return;
+      }
+      const ticket = tickets.find(t => t.id === selectedTicketId);
+      if (ticket) {
+        const author = res.sender_role || 'Support';
+        ticket.thread.push({ type: 'user', author, avatar: author.charAt(0).toUpperCase(), time: 'Just now', content: res.message || text });
+      }
+      renderTicketDetail();
+    }
+
+    document.addEventListener("DOMContentLoaded", loadInboxTickets);
+  </script>
+</body>
+</html>
