@@ -1,48 +1,41 @@
 # QuadrantHR
 
-Unified modular monolith for the HR portal — see [plan.md](plan.md).
+**Ticket-Genie is the primary HR portal / dashboard base** for this monorepo.
+Its application code lives at the **repository root** (not under a nested
+`Ticket-Genie/` folder). Other hackathon projects remain as sibling folders for
+later feature harvest.
 
-Hackathon folders (`EmployeeDirectory/`, `Ticket-Genie/`, etc.) are **reference
-codebases only**. Runtime code lives in `backend/` + `portal/`.
-
-## Architecture (Week 1+)
-
-| Layer | Local | Production target |
-|-------|--------|-------------------|
-| API | FastAPI modular monolith `:8080` | Azure Container Apps |
-| Relational | PostgreSQL `:5432` | Azure SQL |
-| Blobs | Azurite `:10000` | Azure Blob Storage |
-| Jobs/cache | Redis `:6379` | Azure Cache / workers |
-| Vectors / chat | schema in `infra/cosmos-schema.md` | Azure Cosmos DB |
-| UI | React/Vite `portal/` `:5170` | Static Web App / CDN |
-
-## Quick start
+## Run the portal (Ticket-Genie)
 
 ```bash
-# Data plane + unified backend
+# Requires Docker Desktop running
+cp .env.example .env   # or use the committed local template values in .env (gitignored)
 docker compose up --build -d
-
-# UI
-cd portal && npm install && npm run dev
 ```
 
-- API docs: http://127.0.0.1:8080/docs  
-- Portal: http://localhost:5170  
-- Seed login: `hr.admin@quadranthr.local` / `changeme123`
+| Surface | URL |
+|---------|-----|
+| Frontend (Nginx UI) | http://localhost:8080 |
+| Backend API / docs | http://localhost:8000/docs |
 
-Legacy microservice compose (optional): `docker compose -f docker-compose.legacy.yml up`
+Upstream project docs: [README.ticket-genie.md](README.ticket-genie.md)  
+Source template: https://github.com/Azure-Rangers/Ticket-Genie  
 
-## Modules (`backend/app/modules/`)
+## Other projects (reference / later integration)
 
-| Module | Status |
-|--------|--------|
-| auth | JWT local (Entra in Week 4) |
-| directory | Employee search CRUD scaffold |
-| ticketing | Tickets + leave→ticket link |
-| ai_agent | Mock LLM copilot |
-| hiring / training / policies | Status stubs for Weeks 2–3 |
+| Folder | Role |
+|--------|------|
+| `EmployeeDirectory/` | Directory / Mel |
+| `ResumeScreening/` | Hiring / ResumeIQ |
+| `TrainingPortal/` | Training & compliance |
+| `ClosedAI/` | AI HR Copilot (Vera) |
+| `Bug Busters/` | Policy generator |
+| `Decacore-Employee-FAQ-Chatbot/` | FAQ chatbot |
+| `_archive/week1-monolith/` | Earlier unified-monolith scaffold (not the active UI) |
 
 ## Git safety
 
-Push **only** to https://github.com/IsheteDGr8/QuadrantHR. Never re-add `.git`
-inside hackathon folders. See [CONTRIBUTING.md](CONTRIBUTING.md).
+- Push **only** to https://github.com/IsheteDGr8/QuadrantHR
+- Do **not** push this tree to `Azure-Rangers/Ticket-Genie` or other team remotes
+- Nested `.git` folders inside module directories must stay deleted
+- See [CONTRIBUTING.md](CONTRIBUTING.md) and [plan.md](plan.md)

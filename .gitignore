@@ -1,54 +1,99 @@
-# --- secrets & local env ---
-.env
-.env.*
-!.env.example
-**/.env
-!**/.env.example
+# Node.js / Frontend dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# --- Python ---
-**/__pycache__/
-**/*.py[cod]
-**/*.egg-info/
-**/.venv/
-**/venv/
-**/.pytest_cache/
-**/.mypy_cache/
-**/.ruff_cache/
-**/.coverage
-**/htmlcov/
-**/*.db
-**/*.sqlite3
-
-# --- Node ---
-**/node_modules/
-**/dist/
-**/.next/
-**/build/
-**/.turbo/
-portal/node_modules/
-portal/dist/
-
-# --- IDE / OS ---
-.idea/
-.vscode/
-*.swp
+# OS / System files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# --- Docker / logs ---
-**/*.log
-**/server.log*
+# Environment variables & secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
 
-# --- Azure / local tooling ---
-**/.azure/
-**/azurite/
+# Python & Virtual Environments
+venv/
+.venv/
+.venv*/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+streamlit_azure_app.egg-info/
+ticket_genie.egg-info/
+
+# Databases & local data
+*.db
+*.sqlite
+*.sqlite3
+ticketgenie.db
+
+# Artifacts & Local Logs
+artifacts/
+*.log
+crash.log
+crash.*.log
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Terraform files
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.tfstate.lock.info
+.terraformrc
+terraform.rc
+
+# --- QuadrantHR monorepo extras ---
+_archive/
+.gitignore.quadranthr.bak
+**/node_modules/
+**/.next/
+EmployeeDirectory/.venv/
+ClosedAI/**/.venv/
+ResumeScreening/**/.venv/
+TrainingPortal/**/.venv/
+Decacore-Employee-FAQ-Chatbot/**/.venv/
+Bug Busters/**/.venv/
+
+*.pdf
+*.PDF
 **/local.settings.json
 
-# --- Large / generated artifacts ---
-**/*.pdf
-!**/docs/**/*.pdf
-**/data/output/
-ResumeScreening/**/resume_assistant.db
 
-backend/.venv/
-
+# QuadrantHR extras
+_archive/
+.gitignore.quadranthr.bak
+*.pdf
+*.PDF
+**/local.settings.json
+**/node_modules/
+**/.venv/
+**/venv/
